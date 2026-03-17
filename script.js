@@ -799,10 +799,13 @@ function recalculate(portfolioId) {
 
 /**
  * Fetches live prices for every ticker.
- * Source 1 — Yahoo Finance v8 JSON, tried through 3 CORS proxies in order.
- * Source 2 — Stooq CSV (independent fallback), also tried through the same
- *             3 proxies.  Both plain ticker and ticker.US suffix are attempted
- *             so that most US-listed ETFs resolve even if Yahoo is unavailable.
+ *
+ * Strategy 1 — Yahoo Finance v7 BATCH quote: all tickers in ONE request,
+ *   tried through 3 CORS proxies.  A single HTTP call avoids rate-limiting
+ *   that kills per-ticker parallel requests.
+ *
+ * Strategy 2 — Individual fallback: for any ticker not covered by the batch,
+ *   try Yahoo v8 chart then Stooq CSV, each through the same 3 proxies.
  *
  * Proxy A: allorigins.win/raw   Proxy B: corsproxy.io   Proxy C: codetabs.com
  */
@@ -830,18 +833,49 @@ async function fetchPrices(portfolioId) {
     btn.innerHTML = `<span aria-hidden="true" class="spin-icon">⟳</span> Fetching…`;
   }
 
-  /* ── Per-ticker fetch with proxy cascade + source fallback ── */
-  async function fetchOne(ticker) {
-    /* Three CORS proxies to try for every target URL */
-    const proxyWrap = [
-      url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-      url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-      url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-    ];
+  /* Three CORS proxies — tried in order for every target URL */
+  const proxyWrap = [
+    url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+    url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+    url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+  ];
 
+  /* ticker → price  (filled in below) */
+  const priceMap = {};
+
+  /* ── Strategy 1: single batch request via Yahoo v7 quote ── */
+  /* One proxy call returns all tickers — avoids rate-limit spam */
+  const batchUrl =
+    `https://query1.finance.yahoo.com/v7/finance/quote` +
+    `?symbols=${uniqueTickers.map(encodeURIComponent).join(',')}` +
+    `&fields=regularMarketPrice`;
+
+  for (const makeProxy of proxyWrap) {
+    const ctrl  = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 12000);
+    try {
+      const res = await fetch(makeProxy(batchUrl), { signal: ctrl.signal });
+      clearTimeout(timer);
+      if (!res.ok) continue;
+      const data    = await res.json();
+      const results = data?.quoteResponse?.result;
+      if (Array.isArray(results) && results.length > 0) {
+        results.forEach(q => {
+          if (q?.regularMarketPrice != null)
+            priceMap[q.symbol.toUpperCase()] = q.regularMarketPrice;
+        });
+        break;   /* batch succeeded — stop trying other proxies */
+      }
+    } catch (e) {
+      clearTimeout(timer);
+    }
+  }
+
+  /* ── Strategy 2: individual fallback for any still-missing tickers ── */
+  async function fetchOne(ticker) {
     let lastErr;
 
-    /* ── Source 1: Yahoo Finance v8 JSON ──────────────────── */
+    /* Yahoo v8 chart (per-ticker) */
     const yahooUrl =
       `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}` +
       `?interval=1d&range=1d&includePrePost=false`;
@@ -859,20 +893,18 @@ async function fetchPrices(portfolioId) {
           continue;
         }
         const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
-        if (price != null) return price;               /* ← success */
-        lastErr = new Error('No price field in Yahoo response');
+        if (price != null) return price;
+        lastErr = new Error('No price in Yahoo v8 response');
       } catch (e) {
         clearTimeout(timer);
         lastErr = e;
       }
     }
 
-    /* ── Source 2: Stooq CSV fallback ─────────────────────── */
-    /* Try plain ticker first, then ticker.US (covers most US-listed ETFs) */
+    /* Stooq CSV — plain ticker then ticker.US */
     for (const sym of [ticker, `${ticker}.US`]) {
       const stooqUrl =
         `https://stooq.com/q/l/?s=${encodeURIComponent(sym)}&f=sd2t2ohlcv&e=csv`;
-
       for (const makeProxy of proxyWrap) {
         const ctrl  = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), 8000);
@@ -880,11 +912,11 @@ async function fetchPrices(portfolioId) {
           const res = await fetch(makeProxy(stooqUrl), { signal: ctrl.signal });
           clearTimeout(timer);
           if (!res.ok) { lastErr = new Error(`HTTP ${res.status}`); continue; }
-          const text = await res.text();
+          const text   = await res.text();
           /* Stooq CSV: Symbol,Date,Time,Open,High,Low,Close,Volume */
           const fields = text.trim().split('\n').pop().split(',');
           const close  = parseFloat(fields[6]);
-          if (!isNaN(close) && close > 0) return close; /* ← success */
+          if (!isNaN(close) && close > 0) return close;
           lastErr = new Error('Stooq: no valid price');
         } catch (e) {
           clearTimeout(timer);
@@ -896,25 +928,32 @@ async function fetchPrices(portfolioId) {
     throw lastErr || new Error('All sources and proxies failed');
   }
 
-  /* ── Parallel fetch — individual failures don't abort the batch ── */
-  const results = await Promise.allSettled(uniqueTickers.map(t => fetchOne(t)));
+  const missing = uniqueTickers.filter(t => priceMap[t] == null);
+  if (missing.length > 0) {
+    const fallbackResults = await Promise.allSettled(missing.map(t => fetchOne(t)));
+    missing.forEach((ticker, idx) => {
+      if (fallbackResults[idx].status === 'fulfilled')
+        priceMap[ticker] = fallbackResults[idx].value;
+      else
+        console.warn(`fetchPrices — ${ticker}:`, fallbackResults[idx].reason?.message);
+    });
+  }
 
+  /* ── Apply prices to DOM ───────────────────────────────── */
   let fetched = 0;
-  uniqueTickers.forEach((ticker, idx) => {
-    const outcome = results[idx];
+  uniqueTickers.forEach(ticker => {
+    const price = priceMap[ticker];
     (tickerRowMap[ticker] || []).forEach(row => {
       const mktEl = row.querySelector('[data-mkt-price]');
       if (!mktEl) return;
-      if (outcome.status === 'fulfilled') {
-        const p = outcome.value;
-        mktEl.dataset.raw = p;
-        mktEl.textContent = '$' + Number(p).toLocaleString('en-US', {
+      if (price != null) {
+        mktEl.dataset.raw = price;
+        mktEl.textContent = '$' + Number(price).toLocaleString('en-US', {
           minimumFractionDigits: 2, maximumFractionDigits: 2,
         });
         mktEl.className = 'cell-ro mkt-price-live';
         fetched++;
       } else {
-        console.warn(`fetchPrices — ${ticker}:`, outcome.reason?.message);
         mktEl.dataset.raw = '0';
         mktEl.textContent = 'N/A';
         mktEl.className   = 'cell-ro mkt-price-na';
