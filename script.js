@@ -64,6 +64,15 @@ const nextRowId = () => `row-${++_rowId}`;
 /* Tracks how many portfolios have ever been created (for unique IDs/names) */
 let _portfolioSeq = PORTFOLIOS.length;
 
+/**
+ * SAFETY GUARD — Gist auto-push is disabled until real user data has been
+ * confirmed loaded (from localStorage or Gist). This prevents demo data
+ * from ever being auto-pushed when the app opens fresh on a new browser/origin.
+ * Only set to true by loadState() returning true, a successful Gist pull,
+ * or an explicit user action (manual Push button).
+ */
+let _gistPushEnabled = false;
+
 /* ── localStorage persistence ───────────────────────────────── */
 const STORAGE_KEY = 'ira-dashboard-v1';
 
@@ -189,6 +198,21 @@ function setSyncMsg(msg, type = 'info') {
 }
 
 /**
+ * Returns true if the given portfolios array is identical to the built-in
+ * demo defaults (matched by portfolio count, holding count, and all tickers).
+ * Used as a second-layer guard to prevent auto-pushing demo data to Gist.
+ */
+function _looksLikeDemo(portfolios) {
+  const defaults = getDefaultPortfolios();
+  if (!Array.isArray(portfolios) || portfolios.length !== defaults.length) return false;
+  return portfolios.every((p, pi) => {
+    const d = defaults[pi];
+    if (!p.holdings || p.holdings.length !== d.holdings.length) return false;
+    return p.holdings.every((h, hi) => h.ticker === d.holdings[hi].ticker);
+  });
+}
+
+/**
  * Read every editable field + fetched mkt prices from the live DOM
  * and persist to localStorage as JSON.
  */
@@ -215,8 +239,10 @@ function saveState() {
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     flashSaveIndicator();
-    // Fire-and-forget push to Gist — does not block the UI
-    if (gistSync.connected) {
+    // Auto-push to Gist only when real user data is confirmed loaded.
+    // _gistPushEnabled stays false on a fresh origin until a pull/load succeeds,
+    // which prevents demo data from silently overwriting the real Gist.
+    if (gistSync.connected && _gistPushEnabled && !_looksLikeDemo(state.portfolios)) {
       gistSync.push(state).catch(e => console.warn('Gist push failed:', e));
     }
   } catch (e) {
@@ -236,6 +262,7 @@ function loadState() {
     if (!Array.isArray(state?.portfolios) || state.portfolios.length === 0) return false;
     PORTFOLIOS = state.portfolios;
     _portfolioSeq = state.portfolioSeq ?? state.portfolios.length;
+    _gistPushEnabled = true;  // real data confirmed — safe to auto-push
     return true;
   } catch (e) {
     console.warn('loadState failed:', e);
@@ -252,6 +279,7 @@ function resetToDemo() {
   localStorage.removeItem(STORAGE_KEY);
   PORTFOLIOS = getDefaultPortfolios();
   _portfolioSeq = PORTFOLIOS.length;
+  _gistPushEnabled = false;  // don't auto-push demo data
   renderDashboard();
 }
 
@@ -277,6 +305,7 @@ document.addEventListener('DOMContentLoaded', () => {
           _portfolioSeq  = state.portfolioSeq ?? state.portfolios.length;
           // Also refresh localStorage so offline fallback stays current
           localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+          _gistPushEnabled = true;  // real data loaded — safe to auto-push
           setSyncTimestamp();
         } else {
           loadState();
@@ -294,7 +323,7 @@ document.addEventListener('DOMContentLoaded', () => {
         updateSyncStatus();
       });
   } else {
-    loadState();   // populate PORTFOLIOS from localStorage (falls back to defaults)
+    loadState();   // sets _gistPushEnabled=true if real data found
     setHeaderDate();
     renderDashboard();
     initModal();
@@ -1335,6 +1364,7 @@ async function connectGist() {
         PORTFOLIOS    = state.portfolios;
         _portfolioSeq = state.portfolioSeq ?? state.portfolios.length;
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        _gistPushEnabled = true;  // real data loaded — safe to auto-push
         setSyncTimestamp();
         renderDashboard();
         setSyncMsg('Data pulled from Gist and dashboard updated.', 'ok');
@@ -1358,6 +1388,7 @@ async function pullFromGist() {
     PORTFOLIOS    = state.portfolios;
     _portfolioSeq = state.portfolioSeq ?? state.portfolios.length;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    _gistPushEnabled = true;  // real data loaded — safe to auto-push
     setSyncTimestamp();
     renderDashboard();
     setSyncMsg('Dashboard updated from Gist.', 'ok');
@@ -1368,29 +1399,41 @@ async function pullFromGist() {
 
 /** Called by the "Push now" button — force-save current state to Gist. */
 async function pushToGist() {
+  // Build state from DOM (same as saveState does)
+  const cards = Array.from(document.querySelectorAll('.portfolio-card'));
+  const state = {
+    portfolioSeq: _portfolioSeq,
+    savedAt: new Date().toISOString(),
+    portfolios: cards.map(card => {
+      const id       = card.id.replace('card-', '');
+      const name     = card.querySelector('.card-title')?.textContent     || '';
+      const subtitle = card.querySelector('.card-subtitle')?.textContent  || '';
+      const rows     = Array.from(card.querySelectorAll('tbody tr[data-row]'));
+      const holdings = rows.map(row => ({
+        ticker   : row.querySelector('[data-ticker]')?.value              || '',
+        shares   : toNum(row.querySelector('[data-shares]')?.value),
+        price    : toNum(row.querySelector('[data-cost-basis]')?.value),
+        targetPct: toNum(row.querySelector('[data-target-pct]')?.value),
+        mktPrice : toNum(row.querySelector('[data-mkt-price]')?.dataset.raw),
+      }));
+      return { id, name, subtitle, holdings };
+    }),
+  };
+
+  // Warn the user if the data currently on screen looks like demo defaults
+  if (_looksLikeDemo(state.portfolios)) {
+    const ok = confirm(
+      'Warning: the dashboard is currently showing demo data.\n\n' +
+      'Pushing now will OVERWRITE your real Gist data with demo placeholders.\n\n' +
+      'Are you sure you want to continue?'
+    );
+    if (!ok) { setSyncMsg('Push cancelled.', 'warn'); return; }
+  }
+
   setSyncMsg('Pushing to Gist…', 'info');
   try {
-    // Build state from DOM (same as saveState does)
-    const cards = Array.from(document.querySelectorAll('.portfolio-card'));
-    const state = {
-      portfolioSeq: _portfolioSeq,
-      savedAt: new Date().toISOString(),
-      portfolios: cards.map(card => {
-        const id       = card.id.replace('card-', '');
-        const name     = card.querySelector('.card-title')?.textContent     || '';
-        const subtitle = card.querySelector('.card-subtitle')?.textContent  || '';
-        const rows     = Array.from(card.querySelectorAll('tbody tr[data-row]'));
-        const holdings = rows.map(row => ({
-          ticker   : row.querySelector('[data-ticker]')?.value              || '',
-          shares   : toNum(row.querySelector('[data-shares]')?.value),
-          price    : toNum(row.querySelector('[data-cost-basis]')?.value),
-          targetPct: toNum(row.querySelector('[data-target-pct]')?.value),
-          mktPrice : toNum(row.querySelector('[data-mkt-price]')?.dataset.raw),
-        }));
-        return { id, name, subtitle, holdings };
-      }),
-    };
     await gistSync.push(state);
+    _gistPushEnabled = true;
     const gistIdEl = document.getElementById('sync-gist-id-display');
     if (gistIdEl) gistIdEl.textContent = gistSync.gistId;
     setSyncMsg('Pushed successfully.', 'ok');
