@@ -798,12 +798,13 @@ function recalculate(portfolioId) {
    ================================================================ */
 
 /**
- * Fetches live prices for every ticker via Yahoo Finance v8/finance/chart.
- * Tries two CORS proxies in sequence per ticker so a single proxy failure
- * doesn't kill the whole batch.
+ * Fetches live prices for every ticker.
+ * Source 1 — Yahoo Finance v8 JSON, tried through 3 CORS proxies in order.
+ * Source 2 — Stooq CSV (independent fallback), also tried through the same
+ *             3 proxies.  Both plain ticker and ticker.US suffix are attempted
+ *             so that most US-listed ETFs resolve even if Yahoo is unavailable.
  *
- * Proxy 1: allorigins.win/raw  — returns the raw Yahoo JSON directly.
- * Proxy 2: corsproxy.io        — pass-through; falls back if proxy 1 fails.
+ * Proxy A: allorigins.win/raw   Proxy B: corsproxy.io   Proxy C: codetabs.com
  */
 async function fetchPrices(portfolioId) {
   const card = document.getElementById(`card-${portfolioId}`);
@@ -829,44 +830,70 @@ async function fetchPrices(portfolioId) {
     btn.innerHTML = `<span aria-hidden="true" class="spin-icon">⟳</span> Fetching…`;
   }
 
-  /* ── Per-ticker fetch with proxy cascade ───────────────── */
+  /* ── Per-ticker fetch with proxy cascade + source fallback ── */
   async function fetchOne(ticker) {
-    /* query2 is less aggressively rate-limited than query1 */
+    /* Three CORS proxies to try for every target URL */
+    const proxyWrap = [
+      url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+      url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+      url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+    ];
+
+    let lastErr;
+
+    /* ── Source 1: Yahoo Finance v8 JSON ──────────────────── */
     const yahooUrl =
       `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}` +
       `?interval=1d&range=1d&includePrePost=false`;
 
-    const proxies = [
-      /* Proxy 1 — allorigins /raw returns the raw upstream body directly */
-      `https://api.allorigins.win/raw?url=${encodeURIComponent(yahooUrl)}`,
-      /* Proxy 2 — corsproxy.io plain pass-through */
-      `https://corsproxy.io/?${encodeURIComponent(yahooUrl)}`,
-    ];
-
-    let lastErr;
-    for (const proxyUrl of proxies) {
+    for (const makeProxy of proxyWrap) {
       const ctrl  = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 10000);
+      const timer = setTimeout(() => ctrl.abort(), 8000);
       try {
-        const res = await fetch(proxyUrl, { signal: ctrl.signal });
+        const res = await fetch(makeProxy(yahooUrl), { signal: ctrl.signal });
         clearTimeout(timer);
-        if (!res.ok) { lastErr = new Error(`Proxy HTTP ${res.status}`); continue; }
-
-        const data  = await res.json();
-        /* Yahoo returns chart.error when the symbol is bad */
+        if (!res.ok) { lastErr = new Error(`HTTP ${res.status}`); continue; }
+        const data = await res.json();
         if (data?.chart?.error) {
           lastErr = new Error(data.chart.error.description || 'Yahoo error');
           continue;
         }
         const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
-        if (price == null) { lastErr = new Error('No price field in response'); continue; }
-        return price;          /* ← success */
+        if (price != null) return price;               /* ← success */
+        lastErr = new Error('No price field in Yahoo response');
       } catch (e) {
         clearTimeout(timer);
         lastErr = e;
       }
     }
-    throw lastErr || new Error('All proxies failed');
+
+    /* ── Source 2: Stooq CSV fallback ─────────────────────── */
+    /* Try plain ticker first, then ticker.US (covers most US-listed ETFs) */
+    for (const sym of [ticker, `${ticker}.US`]) {
+      const stooqUrl =
+        `https://stooq.com/q/l/?s=${encodeURIComponent(sym)}&f=sd2t2ohlcv&e=csv`;
+
+      for (const makeProxy of proxyWrap) {
+        const ctrl  = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 8000);
+        try {
+          const res = await fetch(makeProxy(stooqUrl), { signal: ctrl.signal });
+          clearTimeout(timer);
+          if (!res.ok) { lastErr = new Error(`HTTP ${res.status}`); continue; }
+          const text = await res.text();
+          /* Stooq CSV: Symbol,Date,Time,Open,High,Low,Close,Volume */
+          const fields = text.trim().split('\n').pop().split(',');
+          const close  = parseFloat(fields[6]);
+          if (!isNaN(close) && close > 0) return close; /* ← success */
+          lastErr = new Error('Stooq: no valid price');
+        } catch (e) {
+          clearTimeout(timer);
+          lastErr = e;
+        }
+      }
+    }
+
+    throw lastErr || new Error('All sources and proxies failed');
   }
 
   /* ── Parallel fetch — individual failures don't abort the batch ── */
