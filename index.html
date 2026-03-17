@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IRA Portfolio Rebalancing Dashboard</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- ── Site Header ──────────────────────────────────────── -->
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="header-brand">
+        <span class="brand-mark">◈</span>
+        <div class="brand-text">
+          <h1 class="brand-title">IRA Portfolio Rebalancing Dashboard</h1>
+          <p class="brand-sub">Multi-Account Allocation &amp; Drift Analysis</p>
+        </div>
+      </div>
+      <div class="header-stats" id="aggregate-stats">
+        <!-- populated by script.js -->
+      </div>
+      <div class="header-right">
+        <span class="save-indicator" id="save-indicator">&#10003;&nbsp;Saved</span>
+        <button class="btn btn-reset-demo" onclick="resetToDemo()" title="Clear saved data and restore original demo portfolios">&#8635; Reset Demo</button>
+        <span class="header-date" id="current-date"></span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── Dashboard ────────────────────────────────────────── -->
+  <main class="dashboard" id="dashboard">
+    <!-- Portfolio cards injected by script.js -->
+  </main>
+
+  <!-- ── Rebalance Suggestion Modal ───────────────────────── -->
+  <div class="modal-backdrop" id="modal-backdrop">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal-header">
+        <h2 class="modal-title" id="modal-title">Rebalance Suggestion</h2>
+        <button class="modal-close-btn" id="modal-close" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-toolbar">
+        <button class="btn btn-accent btn-sm" id="btn-copy-suggestion">
+          <span>⎘</span>&nbsp;Copy to Clipboard
+        </button>
+        <span class="copy-confirm" id="copy-confirm"></span>
+      </div>
+      <div class="modal-body">
+        <textarea
+          class="suggestion-textarea"
+          id="suggestion-textarea"
+          readonly
+          spellcheck="false"
+          aria-label="Rebalance suggestion text"
+        ></textarea>
+      </div>
+    </div>
+  </div>
+
+  <noscript>
+    <p style="color:#f05060;padding:32px;font-family:sans-serif;">
+      JavaScript must be enabled to use this dashboard.
+    </p>
+  </noscript>
+
+  <script src="script.js"></script>
+</body>
+</html>
