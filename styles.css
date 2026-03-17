@@ -220,6 +220,51 @@ body {
   outline: none;
 }
 
+/* Cloud Sync button — in site header */
+.btn-cloud-sync {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  font-size: 11.5px;
+  font-weight: 500;
+  font-family: var(--font-ui);
+  background: transparent;
+  border: 1px solid var(--border-normal);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  letter-spacing: .03em;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.btn-cloud-sync:hover {
+  background: var(--bg-row-hover);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+.btn-cloud-sync.connected {
+  border-color: var(--color-gain);
+  color: var(--color-gain);
+}
+.btn-cloud-sync.connected:hover {
+  background: rgba(16, 185, 129, .10);
+}
+
+/* Connection status dot */
+.sync-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+  transition: background .3s;
+}
+.btn-cloud-sync.connected .sync-dot,
+.sync-dot.connected {
+  background: var(--color-gain);
+  box-shadow: 0 0 5px rgba(16, 185, 129, .6);
+}
+
 /* Auto-save flash indicator */
 .save-indicator {
   font-size: 11px;
@@ -237,6 +282,187 @@ body {
   opacity: 1;
   transform: translateY(0);
 }
+
+/* ── Sync Modal ──────────────────────────────────────────── */
+.sync-modal {
+  max-width: 540px;
+}
+
+.sync-view {
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px 24px 16px;
+}
+
+.sync-intro {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.sync-instructions {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  background: var(--bg-table-head);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 11px 14px;
+  line-height: 1.7;
+}
+.sync-instructions ol {
+  margin: 6px 0 0 16px;
+  padding: 0;
+}
+.sync-instructions code {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  background: rgba(255,255,255,.06);
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: var(--accent-blue);
+}
+
+.sync-field-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.sync-pat-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.sync-pat-input {
+  flex: 1;
+  background: var(--bg-input);
+  border: 1px solid var(--border-normal);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 7px 10px;
+  outline: none;
+  transition: border-color .15s;
+}
+.sync-pat-input:focus {
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 2px rgba(30,143,224,.15);
+}
+
+.btn-cloud-connect {
+  padding: 7px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--accent-blue-bg);
+  border: 1px solid var(--accent-blue-bdr);
+  border-radius: var(--radius-sm);
+  color: var(--accent-blue);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s, color .15s;
+}
+.btn-cloud-connect:hover {
+  background: rgba(30,143,224,.22);
+  color: #fff;
+}
+.btn-cloud-connect:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+/* Connected view */
+.sync-connected-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-gain);
+}
+
+.sync-gist-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sync-gist-id {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.sync-action-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-cloud-pull, .btn-cloud-push, .btn-cloud-disconnect {
+  padding: 6px 14px;
+  font-size: 11.5px;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.btn-cloud-pull {
+  background: rgba(16, 185, 129, .10);
+  border: 1px solid rgba(16, 185, 129, .30);
+  color: var(--color-gain);
+}
+.btn-cloud-pull:hover {
+  background: rgba(16, 185, 129, .20);
+  border-color: var(--color-gain);
+}
+.btn-cloud-push {
+  background: var(--accent-blue-bg);
+  border: 1px solid var(--accent-blue-bdr);
+  color: var(--accent-blue);
+}
+.btn-cloud-push:hover {
+  background: rgba(30,143,224,.22);
+  color: #fff;
+}
+.btn-cloud-disconnect {
+  background: transparent;
+  border: 1px solid var(--border-normal);
+  color: var(--text-muted);
+  margin-left: auto;
+}
+.btn-cloud-disconnect:hover {
+  border-color: var(--color-alert-neg);
+  color: var(--color-alert-neg);
+}
+
+.sync-note {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* Status bar at bottom of sync modal */
+.sync-status-bar {
+  border-top: 1px solid var(--border-subtle);
+  padding: 9px 24px;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+}
+.sync-status-msg {
+  font-size: 11.5px;
+  font-family: var(--font-mono);
+}
+.sync-ok    { color: var(--color-gain); }
+.sync-warn  { color: var(--color-alert-pos); }
+.sync-error { color: var(--color-alert-neg); }
+.sync-info  { color: var(--text-muted); }
 
 /* ── Dashboard Layout ───────────────────────────────────────── */
 .dashboard {

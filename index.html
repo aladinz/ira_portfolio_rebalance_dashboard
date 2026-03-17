@@ -23,6 +23,13 @@
       </div>
       <div class="header-right">
         <span class="save-indicator" id="save-indicator">&#10003;&nbsp;Saved</span>
+        <button class="btn btn-cloud-sync" id="btn-cloud-sync"
+                onclick="openSyncModal()"
+                title="Cloud Sync &mdash; Not connected (click to set up)">
+          <span class="sync-icon" aria-hidden="true">&#9729;</span>
+          <span class="sync-label">Cloud Sync</span>
+          <span class="sync-dot" aria-hidden="true"></span>
+        </button>
         <button class="btn btn-reset-demo" onclick="resetToDemo()" title="Clear saved data and restore original demo portfolios">&#8635; Reset Demo</button>
         <span class="header-date" id="current-date"></span>
       </div>
@@ -56,6 +63,72 @@
           aria-label="Rebalance suggestion text"
         ></textarea>
       </div>
+    </div>
+  </div>
+
+  <!-- ── Cloud Sync Modal ─────────────────────────────────── -->
+  <div class="modal-backdrop" id="sync-modal-backdrop">
+    <div class="modal sync-modal" role="dialog" aria-modal="true" aria-labelledby="sync-modal-title">
+
+      <div class="modal-header">
+        <h2 class="modal-title" id="sync-modal-title">&#9729;&nbsp; Cloud Sync &mdash; GitHub Gist</h2>
+        <button class="modal-close-btn" id="sync-modal-close" aria-label="Close">✕</button>
+      </div>
+
+      <!-- ── NOT connected view ───────────────────────────── -->
+      <div id="sync-view-disconnected" class="sync-view" style="display:flex">
+        <p class="sync-intro">
+          Your portfolio data will be saved as a <strong>private GitHub Gist</strong> and
+          accessible from any browser. You only need to enter your token once per device.
+        </p>
+
+        <div class="sync-instructions">
+          <strong>How to get a token:</strong>
+          <ol>
+            <li>Go to <code>github.com &rarr; Settings &rarr; Developer settings &rarr; Personal access tokens &rarr; Fine-grained tokens</code> (or classic tokens).</li>
+            <li>Create a new token with the <code>gist</code> scope only.</li>
+            <li>Copy the token and paste it below &mdash; it is stored only in <em>this browser</em>.</li>
+          </ol>
+        </div>
+
+        <label class="sync-field-label" for="sync-pat-input">Personal Access Token</label>
+        <div class="sync-pat-row">
+          <input type="password"
+                 id="sync-pat-input"
+                 class="sync-pat-input"
+                 placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+                 autocomplete="off"
+                 spellcheck="false" />
+          <button class="btn btn-cloud-connect" id="btn-sync-connect" onclick="connectGist()">Connect</button>
+        </div>
+      </div>
+
+      <!-- ── CONNECTED view ───────────────────────────────── -->
+      <div id="sync-view-connected" class="sync-view" style="display:none">
+        <div class="sync-connected-badge">
+          <span class="sync-dot connected" aria-hidden="true"></span>
+          Connected to GitHub Gist
+        </div>
+        <div class="sync-gist-row">
+          <span class="sync-field-label">Gist ID</span>
+          <code id="sync-gist-id-display" class="sync-gist-id">&mdash;</code>
+        </div>
+        <div class="sync-action-row">
+          <button class="btn btn-cloud-pull" onclick="pullFromGist()">&#8595;&nbsp; Pull from Gist</button>
+          <button class="btn btn-cloud-push" onclick="pushToGist()">&#8593;&nbsp; Push to Gist</button>
+          <button class="btn btn-cloud-disconnect" onclick="disconnectGist()">Disconnect</button>
+        </div>
+        <p class="sync-note">
+          Data is <strong>auto-pushed</strong> on every save. Use <em>Pull</em> to load
+          the latest version from another device, or <em>Push</em> to force an upload.
+        </p>
+      </div>
+
+      <!-- ── Status bar (both views) ──────────────────────── -->
+      <div class="sync-status-bar">
+        <span class="sync-status-msg" id="sync-last-saved"></span>
+      </div>
+
     </div>
   </div>
 

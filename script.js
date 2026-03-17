@@ -67,6 +67,127 @@ let _portfolioSeq = PORTFOLIOS.length;
 /* ── localStorage persistence ───────────────────────────────── */
 const STORAGE_KEY = 'ira-dashboard-v1';
 
+/* ── GitHub Gist cloud sync ──────────────────────────── */
+const GIST_PAT_KEY  = 'ira-gist-pat';
+const GIST_ID_KEY   = 'ira-gist-id';
+const GIST_FILENAME = 'ira-dashboard.json';
+const GH_API        = 'https://api.github.com';
+
+const gistSync = {
+  get pat()       { return localStorage.getItem(GIST_PAT_KEY) || ''; },
+  get gistId()    { return localStorage.getItem(GIST_ID_KEY)  || ''; },
+  get connected() { return !!this.pat; },
+
+  _headers(extra = {}) {
+    return {
+      Authorization: `Bearer ${this.pat}`,
+      Accept: 'application/vnd.github+json',
+      'Content-Type': 'application/json',
+      ...extra,
+    };
+  },
+
+  /** Validate PAT by hitting /user; store it and auto-discover existing Gist. */
+  async connect(pat) {
+    const res = await fetch(`${GH_API}/user`, {
+      headers: { Authorization: `Bearer ${pat}`, Accept: 'application/vnd.github+json' },
+    });
+    if (!res.ok) throw new Error(`GitHub auth failed (​${res.status})`);
+    localStorage.setItem(GIST_PAT_KEY, pat);
+    // Try to find an existing Gist so we can pull immediately on a new device
+    await this.findGist();
+    updateSyncStatus();
+  },
+
+  disconnect() {
+    localStorage.removeItem(GIST_PAT_KEY);
+    localStorage.removeItem(GIST_ID_KEY);
+    updateSyncStatus();
+  },
+
+  /** Search the user’s Gist list for one containing our filename. */
+  async findGist() {
+    const res = await fetch(`${GH_API}/gists?per_page=100`, { headers: this._headers() });
+    if (!res.ok) return null;
+    const list  = await res.json();
+    const found = list.find(g => g.files?.[GIST_FILENAME]);
+    if (found) {
+      localStorage.setItem(GIST_ID_KEY, found.id);
+      return found.id;
+    }
+    return null;
+  },
+
+  /** Push current state JSON to Gist (create on first push, update thereafter). */
+  async push(state) {
+    if (!this.connected) return;
+    const body = JSON.stringify({
+      description: 'IRA Portfolio Rebalancing Dashboard — auto-save',
+      public: false,
+      files: { [GIST_FILENAME]: { content: JSON.stringify(state, null, 2) } },
+    });
+    let res;
+    if (this.gistId) {
+      res = await fetch(`${GH_API}/gists/${this.gistId}`,
+        { method: 'PATCH', headers: this._headers(), body });
+    } else {
+      res = await fetch(`${GH_API}/gists`,
+        { method: 'POST', headers: this._headers(), body });
+      if (res.ok) {
+        const data = await res.json();
+        localStorage.setItem(GIST_ID_KEY, data.id);
+      }
+    }
+    if (!res.ok) throw new Error(`Gist push failed (​${res.status})`);
+    setSyncTimestamp();
+  },
+
+  /** Pull state JSON from Gist; returns parsed object or null. */
+  async pull() {
+    if (!this.connected) return null;
+    // If we have no stored ID yet, try to discover it first
+    if (!this.gistId) await this.findGist();
+    if (!this.gistId) return null;
+    const res = await fetch(`${GH_API}/gists/${this.gistId}`, { headers: this._headers() });
+    if (!res.ok) throw new Error(`Gist pull failed (​${res.status})`);
+    const data    = await res.json();
+    const content = data.files?.[GIST_FILENAME]?.content;
+    if (!content) return null;
+    return JSON.parse(content);
+  },
+};
+
+/** Update the cloud-sync button appearance in the site header. */
+function updateSyncStatus() {
+  const btn = document.getElementById('btn-cloud-sync');
+  if (!btn) return;
+  if (gistSync.connected) {
+    btn.classList.add('connected');
+    btn.title = 'Cloud Sync — Connected to GitHub Gist (click to manage)';
+  } else {
+    btn.classList.remove('connected');
+    btn.title = 'Cloud Sync — Not connected (click to set up)';
+  }
+}
+
+/** Write the “last synced” timestamp to the sync modal status line. */
+function setSyncTimestamp() {
+  const el = document.getElementById('sync-last-saved');
+  if (el) {
+    el.textContent = 'Last synced: ' + new Date().toLocaleTimeString();
+    el.className = 'sync-status-msg sync-ok';
+  }
+}
+
+/** Show a message in the sync modal status line. */
+function setSyncMsg(msg, type = 'info') {
+  const el = document.getElementById('sync-last-saved');
+  if (el) {
+    el.textContent = msg;
+    el.className   = `sync-status-msg sync-${type}`;
+  }
+}
+
 /**
  * Read every editable field + fetched mkt prices from the live DOM
  * and persist to localStorage as JSON.
@@ -94,6 +215,10 @@ function saveState() {
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     flashSaveIndicator();
+    // Fire-and-forget push to Gist — does not block the UI
+    if (gistSync.connected) {
+      gistSync.push(state).catch(e => console.warn('Gist push failed:', e));
+    }
   } catch (e) {
     console.warn('saveState failed:', e);
   }
@@ -143,10 +268,39 @@ function flashSaveIndicator() {
    INITIALISATION
    ================================================================ */
 document.addEventListener('DOMContentLoaded', () => {
-  loadState();   // populate PORTFOLIOS from localStorage (falls back to defaults)
-  setHeaderDate();
-  renderDashboard();
-  initModal();
+  // 1. Try to pull from Gist first (if connected); fall back to localStorage.
+  if (gistSync.connected && gistSync.gistId) {
+    gistSync.pull()
+      .then(state => {
+        if (state?.portfolios?.length) {
+          PORTFOLIOS     = state.portfolios;
+          _portfolioSeq  = state.portfolioSeq ?? state.portfolios.length;
+          // Also refresh localStorage so offline fallback stays current
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+          setSyncTimestamp();
+        } else {
+          loadState();
+        }
+      })
+      .catch(e => {
+        console.warn('Gist pull on load failed, using localStorage:', e);
+        loadState();
+      })
+      .finally(() => {
+        setHeaderDate();
+        renderDashboard();
+        initModal();
+        initSyncModal();
+        updateSyncStatus();
+      });
+  } else {
+    loadState();   // populate PORTFOLIOS from localStorage (falls back to defaults)
+    setHeaderDate();
+    renderDashboard();
+    initModal();
+    initSyncModal();
+    updateSyncStatus();
+  }
 });
 
 function setHeaderDate() {
@@ -1106,6 +1260,151 @@ function exportToCSV(portfolioId) {
   document.body.removeChild(link);
   // Release the object URL after a tick so the download has time to start
   setTimeout(() => URL.revokeObjectURL(url), 250);
+}
+
+/* ================================================================
+   SYNC MODAL  (GitHub Gist settings)
+   ================================================================ */
+
+function initSyncModal() {
+  document.getElementById('sync-modal-close')
+    ?.addEventListener('click', closeSyncModal);
+  document.getElementById('sync-modal-backdrop')
+    ?.addEventListener('click', e => { if (e.target.id === 'sync-modal-backdrop') closeSyncModal(); });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && document.getElementById('sync-modal-backdrop')?.classList.contains('active'))
+      closeSyncModal();
+  });
+}
+
+function openSyncModal() {
+  const backdrop = document.getElementById('sync-modal-backdrop');
+  if (!backdrop) return;
+  // Pre-fill PAT field if already stored (masked)
+  const patInput = document.getElementById('sync-pat-input');
+  if (patInput) patInput.value = gistSync.connected ? '••••••••••••••••••••' : '';
+  _refreshSyncModalUI();
+  backdrop.classList.add('active');
+  if (!gistSync.connected) patInput?.focus();
+}
+
+function closeSyncModal() {
+  document.getElementById('sync-modal-backdrop')?.classList.remove('active');
+  setSyncMsg('');
+}
+
+/** Toggle connected/disconnected views inside the modal. */
+function _refreshSyncModalUI() {
+  const connectedView    = document.getElementById('sync-view-connected');
+  const disconnectedView = document.getElementById('sync-view-disconnected');
+  const gistIdEl         = document.getElementById('sync-gist-id-display');
+  if (gistSync.connected) {
+    connectedView?.style.setProperty('display', 'flex');
+    disconnectedView?.style.setProperty('display', 'none');
+    if (gistIdEl) gistIdEl.textContent = gistSync.gistId || 'Will be created on next save';
+  } else {
+    connectedView?.style.setProperty('display', 'none');
+    disconnectedView?.style.setProperty('display', 'flex');
+  }
+}
+
+/** Called by the "Connect" button in the sync modal. */
+async function connectGist() {
+  const patInput = document.getElementById('sync-pat-input');
+  const pat      = patInput?.value?.trim();
+  if (!pat || pat.startsWith('•')) {
+    setSyncMsg('Please paste your Personal Access Token.', 'warn');
+    patInput?.focus();
+    return;
+  }
+  const btn = document.getElementById('btn-sync-connect');
+  btn.disabled    = true;
+  btn.textContent = 'Connecting…';
+  setSyncMsg('Validating token…', 'info');
+  try {
+    await gistSync.connect(pat);
+    patInput.value = '••••••••••••••••••••';
+    setSyncMsg(gistSync.gistId
+      ? 'Connected! Found existing Gist — pulling your data…'
+      : 'Connected! A new Gist will be created on your first save.', 'ok');
+    _refreshSyncModalUI();
+    // If an existing Gist was found, pull immediately and reload the dashboard
+    if (gistSync.gistId) {
+      const state = await gistSync.pull();
+      if (state?.portfolios?.length) {
+        PORTFOLIOS    = state.portfolios;
+        _portfolioSeq = state.portfolioSeq ?? state.portfolios.length;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        setSyncTimestamp();
+        renderDashboard();
+        setSyncMsg('Data pulled from Gist and dashboard updated.', 'ok');
+      }
+    }
+  } catch (e) {
+    setSyncMsg(`Error: ${e.message}`, 'error');
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = 'Connect';
+    updateSyncStatus();
+  }
+}
+
+/** Called by the "Pull now" button — fetch latest Gist data and reload. */
+async function pullFromGist() {
+  setSyncMsg('Pulling from Gist…', 'info');
+  try {
+    const state = await gistSync.pull();
+    if (!state?.portfolios?.length) { setSyncMsg('No data found in Gist.', 'warn'); return; }
+    PORTFOLIOS    = state.portfolios;
+    _portfolioSeq = state.portfolioSeq ?? state.portfolios.length;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    setSyncTimestamp();
+    renderDashboard();
+    setSyncMsg('Dashboard updated from Gist.', 'ok');
+  } catch (e) {
+    setSyncMsg(`Pull failed: ${e.message}`, 'error');
+  }
+}
+
+/** Called by the "Push now" button — force-save current state to Gist. */
+async function pushToGist() {
+  setSyncMsg('Pushing to Gist…', 'info');
+  try {
+    // Build state from DOM (same as saveState does)
+    const cards = Array.from(document.querySelectorAll('.portfolio-card'));
+    const state = {
+      portfolioSeq: _portfolioSeq,
+      savedAt: new Date().toISOString(),
+      portfolios: cards.map(card => {
+        const id       = card.id.replace('card-', '');
+        const name     = card.querySelector('.card-title')?.textContent     || '';
+        const subtitle = card.querySelector('.card-subtitle')?.textContent  || '';
+        const rows     = Array.from(card.querySelectorAll('tbody tr[data-row]'));
+        const holdings = rows.map(row => ({
+          ticker   : row.querySelector('[data-ticker]')?.value              || '',
+          shares   : toNum(row.querySelector('[data-shares]')?.value),
+          price    : toNum(row.querySelector('[data-cost-basis]')?.value),
+          targetPct: toNum(row.querySelector('[data-target-pct]')?.value),
+          mktPrice : toNum(row.querySelector('[data-mkt-price]')?.dataset.raw),
+        }));
+        return { id, name, subtitle, holdings };
+      }),
+    };
+    await gistSync.push(state);
+    const gistIdEl = document.getElementById('sync-gist-id-display');
+    if (gistIdEl) gistIdEl.textContent = gistSync.gistId;
+    setSyncMsg('Pushed successfully.', 'ok');
+  } catch (e) {
+    setSyncMsg(`Push failed: ${e.message}`, 'error');
+  }
+}
+
+/** Disconnect and clear stored credentials. */
+function disconnectGist() {
+  if (!confirm('Disconnect cloud sync? Your GitHub token will be removed from this browser. Your Gist data on GitHub will not be deleted.')) return;
+  gistSync.disconnect();
+  _refreshSyncModalUI();
+  setSyncMsg('Disconnected. Data stays in localStorage only.', 'info');
 }
 
 /* ================================================================
