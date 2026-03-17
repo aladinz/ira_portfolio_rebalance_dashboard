@@ -448,6 +448,12 @@ body {
 }
 
 /* Finnhub / extra sections inside sync modal */
+.sync-modal-body {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
 .sync-section-divider {
   border: none;
   border-top: 1px solid var(--border-subtle);
