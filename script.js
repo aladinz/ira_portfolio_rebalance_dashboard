@@ -800,14 +800,14 @@ function recalculate(portfolioId) {
 /**
  * Fetches live prices for every ticker.
  *
- * Strategy 1 — Yahoo Finance v7 BATCH quote: all tickers in ONE request,
- *   tried through 3 CORS proxies.  A single HTTP call avoids rate-limiting
- *   that kills per-ticker parallel requests.
+ * Strategy 1 — Yahoo Finance v7 BATCH (query1, then query2 if needed).
+ *   One HTTP call for all tickers avoids the parallel-request rate-limit.
  *
- * Strategy 2 — Individual fallback: for any ticker not covered by the batch,
- *   try Yahoo v8 chart then Stooq CSV, each through the same 3 proxies.
+ * Strategy 2 — SEQUENTIAL individual fallback for any still-missing ticker:
+ *   Stooq CSV (.US suffix first) then Yahoo v8 chart, ONE ticker at a time
+ *   with a 500 ms pause between requests so the proxy IP is never flooded.
  *
- * Proxy A: allorigins.win/raw   Proxy B: corsproxy.io   Proxy C: codetabs.com
+ * Proxies tried per request: allorigins.win → corsproxy.io → codetabs.com
  */
 async function fetchPrices(portfolioId) {
   const card = document.getElementById(`card-${portfolioId}`);
@@ -840,103 +840,89 @@ async function fetchPrices(portfolioId) {
     url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
   ];
 
-  /* ticker → price  (filled in below) */
-  const priceMap = {};
-
-  /* ── Strategy 1: single batch request via Yahoo v7 quote ── */
-  /* One proxy call returns all tickers — avoids rate-limit spam */
-  const batchUrl =
-    `https://query1.finance.yahoo.com/v7/finance/quote` +
-    `?symbols=${uniqueTickers.map(encodeURIComponent).join(',')}` +
-    `&fields=regularMarketPrice`;
-
-  for (const makeProxy of proxyWrap) {
-    const ctrl  = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 12000);
-    try {
-      const res = await fetch(makeProxy(batchUrl), { signal: ctrl.signal });
-      clearTimeout(timer);
-      if (!res.ok) continue;
-      const data    = await res.json();
-      const results = data?.quoteResponse?.result;
-      if (Array.isArray(results) && results.length > 0) {
-        results.forEach(q => {
-          if (q?.regularMarketPrice != null)
-            priceMap[q.symbol.toUpperCase()] = q.regularMarketPrice;
-        });
-        break;   /* batch succeeded — stop trying other proxies */
-      }
-    } catch (e) {
-      clearTimeout(timer);
-    }
-  }
-
-  /* ── Strategy 2: individual fallback for any still-missing tickers ── */
-  async function fetchOne(ticker) {
-    let lastErr;
-
-    /* Yahoo v8 chart (per-ticker) */
-    const yahooUrl =
-      `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}` +
-      `?interval=1d&range=1d&includePrePost=false`;
-
+  /* Helper: try one URL through all proxies; returns parsed value or null */
+  async function tryProxies(targetUrl, parseMode /* 'json' | 'text' */, ms = 10000) {
     for (const makeProxy of proxyWrap) {
       const ctrl  = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 8000);
+      const timer = setTimeout(() => ctrl.abort(), ms);
       try {
-        const res = await fetch(makeProxy(yahooUrl), { signal: ctrl.signal });
+        const res = await fetch(makeProxy(targetUrl), { signal: ctrl.signal });
         clearTimeout(timer);
-        if (!res.ok) { lastErr = new Error(`HTTP ${res.status}`); continue; }
-        const data = await res.json();
-        if (data?.chart?.error) {
-          lastErr = new Error(data.chart.error.description || 'Yahoo error');
-          continue;
-        }
-        const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
-        if (price != null) return price;
-        lastErr = new Error('No price in Yahoo v8 response');
+        if (!res.ok) continue;
+        return parseMode === 'json' ? await res.json() : await res.text();
       } catch (e) {
         clearTimeout(timer);
-        lastErr = e;
       }
     }
+    return null;
+  }
 
-    /* Stooq CSV — plain ticker then ticker.US */
-    for (const sym of [ticker, `${ticker}.US`]) {
-      const stooqUrl =
-        `https://stooq.com/q/l/?s=${encodeURIComponent(sym)}&f=sd2t2ohlcv&e=csv`;
-      for (const makeProxy of proxyWrap) {
-        const ctrl  = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 8000);
-        try {
-          const res = await fetch(makeProxy(stooqUrl), { signal: ctrl.signal });
-          clearTimeout(timer);
-          if (!res.ok) { lastErr = new Error(`HTTP ${res.status}`); continue; }
-          const text   = await res.text();
-          /* Stooq CSV: Symbol,Date,Time,Open,High,Low,Close,Volume */
-          const fields = text.trim().split('\n').pop().split(',');
-          const close  = parseFloat(fields[6]);
-          if (!isNaN(close) && close > 0) return close;
-          lastErr = new Error('Stooq: no valid price');
-        } catch (e) {
-          clearTimeout(timer);
-          lastErr = e;
+  /* ticker → price (filled in below) */
+  const priceMap = {};
+
+  /* ── Strategy 1a: Yahoo v7 batch via query1 ────────────── */
+  const symList  = uniqueTickers.map(encodeURIComponent).join(',');
+  const batch1   = await tryProxies(
+    `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symList}&fields=regularMarketPrice`,
+    'json', 12000,
+  );
+  (batch1?.quoteResponse?.result || []).forEach(q => {
+    if (q?.regularMarketPrice != null)
+      priceMap[q.symbol.toUpperCase()] = q.regularMarketPrice;
+  });
+
+  /* ── Strategy 1b: Yahoo v7 batch via query2 (for any still-missing) ── */
+  const miss1 = uniqueTickers.filter(t => priceMap[t] == null);
+  if (miss1.length > 0) {
+    const symList2 = miss1.map(encodeURIComponent).join(',');
+    const batch2   = await tryProxies(
+      `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${symList2}&fields=regularMarketPrice`,
+      'json', 12000,
+    );
+    (batch2?.quoteResponse?.result || []).forEach(q => {
+      if (q?.regularMarketPrice != null)
+        priceMap[q.symbol.toUpperCase()] = q.regularMarketPrice;
+    });
+  }
+
+  /* ── Strategy 2: sequential per-ticker fallback ────────── */
+  /* One at a time with a pause — keeps proxy IP below rate-limit threshold */
+  const delay = ms => new Promise(r => setTimeout(r, ms));
+
+  const miss2 = uniqueTickers.filter(t => priceMap[t] == null);
+  for (const ticker of miss2) {
+
+    /* 2a: Stooq CSV — ticker.US first (most US ETFs), then plain ticker */
+    let resolved = false;
+    for (const sym of [`${ticker}.US`, ticker]) {
+      const text = await tryProxies(
+        `https://stooq.com/q/l/?s=${encodeURIComponent(sym)}&f=sd2t2ohlcv&e=csv`,
+        'text', 8000,
+      );
+      if (text) {
+        /* Stooq CSV: Symbol,Date,Time,Open,High,Low,Close,Volume */
+        const fields = text.trim().split('\n').pop().split(',');
+        const close  = parseFloat(fields[6]);
+        if (!isNaN(close) && close > 0) {
+          priceMap[ticker] = close;
+          resolved = true;
+          break;
         }
       }
     }
+    if (resolved) { await delay(400); continue; }
 
-    throw lastErr || new Error('All sources and proxies failed');
-  }
+    /* 2b: Yahoo v8 chart (per-ticker) */
+    const yData = await tryProxies(
+      `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}` +
+      `?interval=1d&range=1d&includePrePost=false`,
+      'json', 8000,
+    );
+    const price = yData?.chart?.result?.[0]?.meta?.regularMarketPrice;
+    if (price != null) priceMap[ticker] = price;
+    else console.warn(`fetchPrices — ${ticker}: all sources failed`);
 
-  const missing = uniqueTickers.filter(t => priceMap[t] == null);
-  if (missing.length > 0) {
-    const fallbackResults = await Promise.allSettled(missing.map(t => fetchOne(t)));
-    missing.forEach((ticker, idx) => {
-      if (fallbackResults[idx].status === 'fulfilled')
-        priceMap[ticker] = fallbackResults[idx].value;
-      else
-        console.warn(`fetchPrices — ${ticker}:`, fallbackResults[idx].reason?.message);
-    });
+    await delay(400);   /* pause before next ticker to avoid rate-limiting */
   }
 
   /* ── Apply prices to DOM ───────────────────────────────── */
