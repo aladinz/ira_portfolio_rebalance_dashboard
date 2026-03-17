@@ -447,6 +447,25 @@ body {
   margin: 0;
 }
 
+/* Finnhub / extra sections inside sync modal */
+.sync-section-divider {
+  border: none;
+  border-top: 1px solid var(--border-subtle);
+  margin: 4px 0 0;
+}
+.sync-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 24px 8px;
+}
+.sync-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
 /* Status bar at bottom of sync modal */
 .sync-status-bar {
   border-top: 1px solid var(--border-subtle);

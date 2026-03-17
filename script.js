@@ -76,6 +76,10 @@ let _gistPushEnabled = false;
 /* ── localStorage persistence ───────────────────────────────── */
 const STORAGE_KEY = 'ira-dashboard-v1';
 
+/* ── Finnhub price API ──────────────────────────────────────── */
+const FINNHUB_KEY_STORAGE = 'ira-finnhub-key';
+const getFinnhubKey = () => localStorage.getItem(FINNHUB_KEY_STORAGE) || '';
+
 /* ── GitHub Gist cloud sync ──────────────────────────── */
 const GIST_PAT_KEY  = 'ira-gist-pat';
 const GIST_ID_KEY   = 'ira-gist-id';
@@ -459,7 +463,7 @@ function buildPortfolioCard(portfolio, cardNumber) {
         <button class="btn btn-fetchprices"
                 data-fetch-btn="${escAttr(portfolio.id)}"
                 onclick="fetchPrices('${escAttr(portfolio.id)}')"
-                title="Fetch live market prices from Yahoo Finance">
+                title="Fetch live market prices — set a free Finnhub API key in Cloud Sync for best results">
           <span aria-hidden="true">↺</span> Fetch Prices
         </button>
         <button class="btn btn-rebalance"
@@ -800,22 +804,22 @@ function recalculate(portfolioId) {
 /**
  * Fetches live prices for every ticker.
  *
- * Strategy 1 — Yahoo Finance v7 BATCH (query1, then query2 if needed).
- *   One HTTP call for all tickers avoids the parallel-request rate-limit.
+ * Path A (preferred) — Finnhub quote API: direct CORS, no proxy, parallel.
+ *   Requires a free Finnhub API key stored via the Cloud Sync modal.
+ *   Sign up at finnhub.io — free tier gives 60 calls/min (plenty).
  *
- * Strategy 2 — SEQUENTIAL individual fallback for any still-missing ticker:
- *   Stooq CSV (.US suffix first) then Yahoo v8 chart, ONE ticker at a time
- *   with a 500 ms pause between requests so the proxy IP is never flooded.
+ * Path B (fallback) — proxy cascade when no Finnhub key is set:
+ *   1. Yahoo Finance v7 batch (query1, then query2) — 1 request for all.
+ *   2. Sequential per-ticker: Stooq CSV then Yahoo v8, 300 ms apart.
+ *   Proxy timeouts are kept short (4 s) so failures fail fast.
  *
- * Proxies tried per request: allorigins.win → corsproxy.io → codetabs.com
+ * Proxies: allorigins.win → corsproxy.io → codetabs.com
  */
 async function fetchPrices(portfolioId) {
   const card = document.getElementById(`card-${portfolioId}`);
   if (!card) return;
 
   const rows = Array.from(card.querySelectorAll('tbody tr[data-row]'));
-
-  /* ticker → rows map (handles duplicate tickers) */
   const tickerRowMap = {};
   rows.forEach(row => {
     const t = (row.querySelector('[data-ticker]')?.value || '').trim().toUpperCase();
@@ -833,15 +837,49 @@ async function fetchPrices(portfolioId) {
     btn.innerHTML = `<span aria-hidden="true" class="spin-icon">⟳</span> Fetching…`;
   }
 
-  /* Three CORS proxies — tried in order for every target URL */
+  const priceMap = {};
+  const finnhubKey = getFinnhubKey();
+
+  /* ── Path A: Finnhub (direct CORS, parallel, no proxy needed) ── */
+  if (finnhubKey) {
+    const results = await Promise.allSettled(
+      uniqueTickers.map(async ticker => {
+        const ctrl  = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 8000);
+        try {
+          const res = await fetch(
+            `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(ticker)}&token=${encodeURIComponent(finnhubKey)}`,
+            { signal: ctrl.signal },
+          );
+          clearTimeout(timer);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          /* c = current price; 0 means unknown symbol or closed/no data */
+          if (data?.c > 0) return { ticker, price: data.c };
+          throw new Error('No valid price from Finnhub (c=0)');
+        } catch (e) {
+          clearTimeout(timer);
+          throw e;
+        }
+      }),
+    );
+    results.forEach((outcome, idx) => {
+      if (outcome.status === 'fulfilled')
+        priceMap[outcome.value.ticker] = outcome.value.price;
+      else
+        console.warn(`Finnhub — ${uniqueTickers[idx]}:`, outcome.reason?.message);
+    });
+  }
+
+  /* ── Path B: Proxy fallback for any ticker still missing ── */
   const proxyWrap = [
     url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
     url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
     url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
   ];
 
-  /* Helper: try one URL through all proxies; returns parsed value or null */
-  async function tryProxies(targetUrl, parseMode /* 'json' | 'text' */, ms = 10000) {
+  /* Short timeout — fail fast so we don't hang for minutes */
+  async function tryProxies(targetUrl, parseMode, ms = 4000) {
     for (const makeProxy of proxyWrap) {
       const ctrl  = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), ms);
@@ -857,72 +895,56 @@ async function fetchPrices(portfolioId) {
     return null;
   }
 
-  /* ticker → price (filled in below) */
-  const priceMap = {};
+  const missingAfterFinnhub = uniqueTickers.filter(t => priceMap[t] == null);
+  if (missingAfterFinnhub.length > 0) {
 
-  /* ── Strategy 1a: Yahoo v7 batch via query1 ────────────── */
-  const symList  = uniqueTickers.map(encodeURIComponent).join(',');
-  const batch1   = await tryProxies(
-    `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symList}&fields=regularMarketPrice`,
-    'json', 12000,
-  );
-  (batch1?.quoteResponse?.result || []).forEach(q => {
-    if (q?.regularMarketPrice != null)
-      priceMap[q.symbol.toUpperCase()] = q.regularMarketPrice;
-  });
-
-  /* ── Strategy 1b: Yahoo v7 batch via query2 (for any still-missing) ── */
-  const miss1 = uniqueTickers.filter(t => priceMap[t] == null);
-  if (miss1.length > 0) {
-    const symList2 = miss1.map(encodeURIComponent).join(',');
-    const batch2   = await tryProxies(
-      `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${symList2}&fields=regularMarketPrice`,
-      'json', 12000,
-    );
-    (batch2?.quoteResponse?.result || []).forEach(q => {
-      if (q?.regularMarketPrice != null)
-        priceMap[q.symbol.toUpperCase()] = q.regularMarketPrice;
-    });
-  }
-
-  /* ── Strategy 2: sequential per-ticker fallback ────────── */
-  /* One at a time with a pause — keeps proxy IP below rate-limit threshold */
-  const delay = ms => new Promise(r => setTimeout(r, ms));
-
-  const miss2 = uniqueTickers.filter(t => priceMap[t] == null);
-  for (const ticker of miss2) {
-
-    /* 2a: Stooq CSV — ticker.US first (most US ETFs), then plain ticker */
-    let resolved = false;
-    for (const sym of [`${ticker}.US`, ticker]) {
-      const text = await tryProxies(
-        `https://stooq.com/q/l/?s=${encodeURIComponent(sym)}&f=sd2t2ohlcv&e=csv`,
-        'text', 8000,
+    /* B1: Yahoo v7 batch — query1 then query2 */
+    for (const host of ['query1', 'query2']) {
+      const still = missingAfterFinnhub.filter(t => priceMap[t] == null);
+      if (still.length === 0) break;
+      const symList = still.map(encodeURIComponent).join(',');
+      const batch   = await tryProxies(
+        `https://${host}.finance.yahoo.com/v7/finance/quote?symbols=${symList}&fields=regularMarketPrice`,
+        'json', 6000,
       );
-      if (text) {
-        /* Stooq CSV: Symbol,Date,Time,Open,High,Low,Close,Volume */
-        const fields = text.trim().split('\n').pop().split(',');
-        const close  = parseFloat(fields[6]);
-        if (!isNaN(close) && close > 0) {
-          priceMap[ticker] = close;
-          resolved = true;
-          break;
+      (batch?.quoteResponse?.result || []).forEach(q => {
+        if (q?.regularMarketPrice != null)
+          priceMap[q.symbol.toUpperCase()] = q.regularMarketPrice;
+      });
+    }
+
+    /* B2: Sequential per-ticker (Stooq → Yahoo v8) for anything still missing */
+    const delay = ms => new Promise(r => setTimeout(r, ms));
+    for (const ticker of missingAfterFinnhub.filter(t => priceMap[t] == null)) {
+      let resolved = false;
+
+      /* Try Stooq CSV: .US suffix first, then plain ticker */
+      for (const sym of [`${ticker}.US`, ticker]) {
+        const text = await tryProxies(
+          `https://stooq.com/q/l/?s=${encodeURIComponent(sym)}&f=sd2t2ohlcv&e=csv`,
+          'text', 4000,
+        );
+        if (text) {
+          const fields = text.trim().split('\n').pop().split(',');
+          const close  = parseFloat(fields[6]);
+          if (!isNaN(close) && close > 0) { priceMap[ticker] = close; resolved = true; break; }
         }
       }
+
+      /* Last resort: Yahoo v8 chart per-ticker */
+      if (!resolved) {
+        const yData = await tryProxies(
+          `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}` +
+          `?interval=1d&range=1d&includePrePost=false`,
+          'json', 4000,
+        );
+        const price = yData?.chart?.result?.[0]?.meta?.regularMarketPrice;
+        if (price != null) priceMap[ticker] = price;
+        else console.warn(`fetchPrices — ${ticker}: all sources failed`);
+      }
+
+      await delay(300);
     }
-    if (resolved) { await delay(400); continue; }
-
-    /* 2b: Yahoo v8 chart (per-ticker) */
-    const yData = await tryProxies(
-      `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}` +
-      `?interval=1d&range=1d&includePrePost=false`,
-      'json', 8000,
-    );
-    const price = yData?.chart?.result?.[0]?.meta?.regularMarketPrice;
-    if (price != null) priceMap[ticker] = price;
-    else console.warn(`fetchPrices — ${ticker}: all sources failed`);
-
-    await delay(400);   /* pause before next ticker to avoid rate-limiting */
   }
 
   /* ── Apply prices to DOM ───────────────────────────────── */
@@ -952,12 +974,12 @@ async function fetchPrices(portfolioId) {
   /* ── Button feedback ───────────────────────────────────── */
   if (btn) {
     btn.innerHTML = fetched === 0
-      ? `<span aria-hidden="true">⚠</span> No prices returned`
+      ? `<span aria-hidden="true">⚠</span> No prices — set Finnhub key in Cloud Sync`
       : `<span aria-hidden="true">✓</span> Updated (${fetched}/${uniqueTickers.length})`;
     setTimeout(() => {
       btn.innerHTML = originalHTML;
       btn.disabled  = false;
-    }, 3200);
+    }, 4000);
   }
 }
 
@@ -1364,9 +1386,34 @@ function openSyncModal() {
   // Pre-fill PAT field if already stored (masked)
   const patInput = document.getElementById('sync-pat-input');
   if (patInput) patInput.value = gistSync.connected ? '••••••••••••••••••••' : '';
+  // Pre-fill Finnhub key if stored (masked)
+  const fhInput = document.getElementById('finnhub-key-input');
+  if (fhInput) fhInput.value = getFinnhubKey() ? '••••••••••••••••••••••••••••••••' : '';
+  const fhStatus = document.getElementById('finnhub-key-status');
+  if (fhStatus) fhStatus.textContent = getFinnhubKey() ? '✓ Key saved — Fetch Prices will use Finnhub.' : '';
   _refreshSyncModalUI();
   backdrop.classList.add('active');
   if (!gistSync.connected) patInput?.focus();
+}
+
+/** Save or clear the Finnhub API key from the sync modal input. */
+function saveFinnhubKey() {
+  const input    = document.getElementById('finnhub-key-input');
+  const statusEl = document.getElementById('finnhub-key-status');
+  const val      = input?.value?.trim() ?? '';
+  if (!val || val.startsWith('•')) {
+    if (statusEl) statusEl.textContent = 'No change — paste a new key to update.';
+    return;
+  }
+  if (val === 'clear' || val === 'remove') {
+    localStorage.removeItem(FINNHUB_KEY_STORAGE);
+    if (input)    input.value = '';
+    if (statusEl) statusEl.textContent = 'Key removed.';
+    return;
+  }
+  localStorage.setItem(FINNHUB_KEY_STORAGE, val);
+  if (input)    input.value = '••••••••••••••••••••••••••••••••';
+  if (statusEl) statusEl.textContent = '✓ Key saved — Fetch Prices will now use Finnhub.';
 }
 
 function closeSyncModal() {

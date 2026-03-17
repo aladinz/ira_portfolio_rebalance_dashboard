@@ -124,6 +124,28 @@
         </p>
       </div>
 
+      <!-- ── Finnhub Price API key ────────────────────────── -->
+      <div class="sync-section-divider"></div>
+      <div class="sync-section">
+        <h3 class="sync-section-title">&#128200;&nbsp; Live Prices &mdash; Finnhub API Key</h3>
+        <p class="sync-intro">
+          A free <strong>Finnhub</strong> key fetches all prices in seconds from any browser &mdash;
+          no proxy needed. Sign up at <strong>finnhub.io</strong>, copy your key from the dashboard,
+          and paste it below. It is stored only in <em>this browser</em>.
+        </p>
+        <label class="sync-field-label" for="finnhub-key-input">Finnhub API Key</label>
+        <div class="sync-pat-row">
+          <input type="password"
+                 id="finnhub-key-input"
+                 class="sync-pat-input"
+                 placeholder="pk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                 autocomplete="off"
+                 spellcheck="false" />
+          <button class="btn btn-cloud-connect" onclick="saveFinnhubKey()">Save Key</button>
+        </div>
+        <span class="sync-status-msg" id="finnhub-key-status"></span>
+      </div>
+
       <!-- ── Status bar (both views) ──────────────────────── -->
       <div class="sync-status-bar">
         <span class="sync-status-msg" id="sync-last-saved"></span>
