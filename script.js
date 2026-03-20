@@ -80,6 +80,28 @@ const STORAGE_KEY = 'ira-dashboard-v1';
 const FINNHUB_KEY_STORAGE = 'ira-finnhub-key';
 const getFinnhubKey = () => localStorage.getItem(FINNHUB_KEY_STORAGE) || '';
 
+/* ── Price proxy map — Fidelity-only funds with no public API ── */
+/*
+  FZROX / FZILX / FXAIX etc. are Fidelity Zero-fee mutual funds that
+  are NOT listed on any public exchange and have no ticker on Yahoo
+  Finance, Finnhub, Polygon, Tiingo, or any CORS-accessible API.
+  Fidelity offers no public market-data endpoint for them.
+
+  For each such ticker we map to a **proxy ETF** that tracks the same
+  underlying index so Fetch Prices can return a useful price.
+  The fetched cell is tinted amber and titled "Price proxied from …".
+  Users can also type their own price directly into the Mkt Price cell.
+
+    FZROX → VTI   (both track CRSP US Total Market)
+    FZILX → VXUS  (Fidelity Zero International → Vanguard Total Intl)
+    FXAIX → SPY   (Fidelity 500 Index → S&P 500 ETF)
+*/
+const PRICE_PROXY_MAP = {
+  FZROX: 'VTI',
+  FZILX: 'VXUS',
+  FXAIX: 'SPY',
+};
+
 /* ── GitHub Gist cloud sync ──────────────────────────── */
 const GIST_PAT_KEY  = 'ira-gist-pat';
 const GIST_ID_KEY   = 'ira-gist-id';
@@ -236,7 +258,7 @@ function saveState() {
           shares   : toNum(row.querySelector('[data-shares]')?.value),
           price    : toNum(row.querySelector('[data-cost-basis]')?.value),
           targetPct: toNum(row.querySelector('[data-target-pct]')?.value),
-          mktPrice : toNum(row.querySelector('[data-mkt-price]')?.dataset.raw),
+          mktPrice : toNum(row.querySelector('[data-mkt-price]')?.value),
         }));
         return { id, name, subtitle, holdings };
       }),
@@ -505,12 +527,6 @@ function buildRow(portfolioId, holding = {}) {
   const targetPct   = holding.targetPct ?? '';
   const mktPriceRaw = holding.mktPrice  ?? 0;
 
-  // Pre-compute mkt-price display so the template stays readable
-  const mktPriceDisplay = mktPriceRaw > 0
-    ? '$' + Number(mktPriceRaw).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-    : '—';
-  const mktPriceCls = mktPriceRaw > 0 ? 'cell-ro mkt-price-live' : 'cell-ro';
-
   const tr = document.createElement('tr');
   tr.dataset.row = id;
 
@@ -545,7 +561,14 @@ function buildRow(portfolioId, holding = {}) {
              aria-label="Average cost / purchase price" />
     </td>
     <td class="col-mktprice">
-      <span class="${escAttr(mktPriceCls)}" data-mkt-price data-raw="${escAttr(String(mktPriceRaw))}" aria-live="polite">${mktPriceDisplay}</span>
+      <input type="number"
+             class="tbl-input inp-mkt-price${mktPriceRaw > 0 ? ' mkt-price-live' : ''}"
+             data-mkt-price
+             value="${escAttr(mktPriceRaw > 0 ? String(mktPriceRaw) : '')}"
+             min="0" step="any" placeholder="—"
+             onchange="recalculate('${escAttr(portfolioId)}')"
+             onblur="recalculate('${escAttr(portfolioId)}')"
+             aria-label="Market price (editable)" />
     </td>
     <td class="col-curval">
       <span class="cell-ro" data-current-value aria-live="polite">—</span>
@@ -678,7 +701,7 @@ function recalculate(portfolioId) {
   const rowData = rows.map(row => {
     const shares     = toNum(row.querySelector('[data-shares]')?.value);
     const costBasis  = toNum(row.querySelector('[data-cost-basis]')?.value);
-    const mktPrice   = toNum(row.querySelector('[data-mkt-price]')?.dataset.raw);
+    const mktPrice   = toNum(row.querySelector('[data-mkt-price]')?.value);
     // Use live market price when available, otherwise fall back to cost basis
     const price      = mktPrice > 0 ? mktPrice : costBasis;
     const targetPct  = toNum(row.querySelector('[data-target-pct]')?.value);
@@ -829,6 +852,11 @@ async function fetchPrices(portfolioId) {
   const uniqueTickers = Object.keys(tickerRowMap);
   if (uniqueTickers.length === 0) return;
 
+  // Build the actual fetch list with proxy substitution:
+  // FZROX, FZILX, etc. have no public API — substitute the proxy ETF for fetching,
+  // then map the price back to the original ticker before applying to DOM.
+  const fetchTickers = [...new Set(uniqueTickers.map(t => PRICE_PROXY_MAP[t] || t))];
+
   /* ── Loading state ─────────────────────────────────────── */
   const btn = card.querySelector(`[data-fetch-btn="${portfolioId}"]`);
   const originalHTML = btn ? btn.innerHTML : '';
@@ -843,7 +871,7 @@ async function fetchPrices(portfolioId) {
   /* ── Path A: Finnhub (direct CORS, parallel, no proxy needed) ── */
   if (finnhubKey) {
     const results = await Promise.allSettled(
-      uniqueTickers.map(async ticker => {
+      fetchTickers.map(async ticker => {
         const ctrl  = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), 8000);
         try {
@@ -867,7 +895,7 @@ async function fetchPrices(portfolioId) {
       if (outcome.status === 'fulfilled')
         priceMap[outcome.value.ticker] = outcome.value.price;
       else
-        console.warn(`Finnhub — ${uniqueTickers[idx]}:`, outcome.reason?.message);
+        console.warn(`Finnhub — ${fetchTickers[idx]}:`, outcome.reason?.message);
     });
   }
 
@@ -895,7 +923,7 @@ async function fetchPrices(portfolioId) {
     return null;
   }
 
-  const missingAfterFinnhub = uniqueTickers.filter(t => priceMap[t] == null);
+  const missingAfterFinnhub = fetchTickers.filter(t => priceMap[t] == null);
   if (missingAfterFinnhub.length > 0) {
 
     /* B1: Yahoo v7 batch — query1 then query2 */
@@ -947,24 +975,35 @@ async function fetchPrices(portfolioId) {
     }
   }
 
+  // Fill proxied prices back to the original tickers
+  // e.g. priceMap['FZROX'] = priceMap['VTI'] after fetching 'VTI'
+  uniqueTickers.forEach(t => {
+    if (PRICE_PROXY_MAP[t] != null && priceMap[t] == null) {
+      const proxyTicker = PRICE_PROXY_MAP[t];
+      if (priceMap[proxyTicker] != null) priceMap[t] = priceMap[proxyTicker];
+    }
+  });
+
   /* ── Apply prices to DOM ───────────────────────────────── */
   let fetched = 0;
   uniqueTickers.forEach(ticker => {
-    const price = priceMap[ticker];
+    const price       = priceMap[ticker];
+    const proxySource = PRICE_PROXY_MAP[ticker];   // e.g. 'VTI' for FZROX
+    const isProxied   = proxySource != null && price != null;
     (tickerRowMap[ticker] || []).forEach(row => {
       const mktEl = row.querySelector('[data-mkt-price]');
       if (!mktEl) return;
       if (price != null) {
-        mktEl.dataset.raw = price;
-        mktEl.textContent = '$' + Number(price).toLocaleString('en-US', {
-          minimumFractionDigits: 2, maximumFractionDigits: 2,
-        });
-        mktEl.className = 'cell-ro mkt-price-live';
+        mktEl.value     = price;
+        mktEl.className = `tbl-input inp-mkt-price mkt-price-live${isProxied ? ' mkt-price-proxied' : ''}`;
+        mktEl.title     = isProxied
+          ? `Price proxied from ${proxySource} — ${ticker} has no public market data`
+          : '';
         fetched++;
       } else {
-        mktEl.dataset.raw = '0';
-        mktEl.textContent = 'N/A';
-        mktEl.className   = 'cell-ro mkt-price-na';
+        mktEl.value     = '';
+        mktEl.className = 'tbl-input inp-mkt-price mkt-price-na';
+        mktEl.title     = '';
       }
     });
   });
@@ -1312,7 +1351,7 @@ function exportToCSV(portfolioId) {
     const ticker      = row.querySelector('[data-ticker]')?.value?.trim()   || '';
     const shares      = row.querySelector('[data-shares]')?.value?.trim()   || '';
     const avgCost     = row.querySelector('[data-cost-basis]')?.value?.trim() || '';
-    const mktRaw      = toNum(row.querySelector('[data-mkt-price]')?.dataset.raw);
+    const mktRaw      = toNum(row.querySelector('[data-mkt-price]')?.value);
     const mktPrice    = mktRaw > 0 ? mktRaw.toFixed(2) : '';
     const curVal      = row.querySelector('[data-current-value]')?.textContent?.replace(/[$,]/g, '').trim() || '';
     const gainLoss    = row.querySelector('[data-gain-loss]')?.textContent?.trim() || '';
@@ -1513,7 +1552,7 @@ async function pushToGist() {
         shares   : toNum(row.querySelector('[data-shares]')?.value),
         price    : toNum(row.querySelector('[data-cost-basis]')?.value),
         targetPct: toNum(row.querySelector('[data-target-pct]')?.value),
-        mktPrice : toNum(row.querySelector('[data-mkt-price]')?.dataset.raw),
+        mktPrice : toNum(row.querySelector('[data-mkt-price]')?.value),
       }));
       return { id, name, subtitle, holdings };
     }),

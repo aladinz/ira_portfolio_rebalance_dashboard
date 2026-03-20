@@ -781,14 +781,24 @@ body {
 .inp-price  { width: 100%; }
 .inp-target { width: 100%; }
 
-/* ── Gain / Loss cell colours ─────────────────────────────────── */
-.gain-pos  { color: var(--color-ok);     font-family: var(--font-mono); font-size: 11.5px; font-weight: 600; }
-.gain-neg  { color: var(--color-danger); font-family: var(--font-mono); font-size: 11.5px; font-weight: 600; }
-.gain-zero { color: var(--text-muted);   font-family: var(--font-mono); font-size: 11.5px; }
+/* Mkt Price — editable input; tinted blue when fetched, amber when proxied */
+.inp-mkt-price { width: 100%; text-align: right; }
 
 /* Live fetched price highlight */
 .mkt-price-live { color: var(--accent-blue); font-family: var(--font-mono); font-weight: 600; }
 .mkt-price-na   { color: var(--text-muted);  font-family: var(--font-mono); font-style: italic; }
+
+/* Proxied price (e.g. FZROX price sourced from VTI) — amber tint + dashed border */
+.mkt-price-proxied {
+  color:        var(--color-warn) !important;
+  border-color: rgba(245, 166, 35, 0.45) !important;
+  font-style:   italic;
+}
+
+/* ── Gain / Loss cell colours ─────────────────────────────────── */
+.gain-pos  { color: var(--color-ok);     font-family: var(--font-mono); font-size: 11.5px; font-weight: 600; }
+.gain-neg  { color: var(--color-danger); font-family: var(--font-mono); font-size: 11.5px; font-weight: 600; }
+.gain-zero { color: var(--text-muted);   font-family: var(--font-mono); font-size: 11.5px; }
 
 /* ── Suggested Trade read-only cell colours ─────────────────── */
 .trade-buy  {
