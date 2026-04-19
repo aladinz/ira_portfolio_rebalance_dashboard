@@ -102,53 +102,82 @@ function saveState() {
   _saveTimer = setTimeout(_persistState, 500);
 }
 
+const _LS_KEY = 'ira-dashboard-state';
+
 async function _persistState() {
+  const cards = Array.from(document.querySelectorAll('.portfolio-card'));
+  const state = {
+    portfolioSeq: _portfolioSeq,
+    settings    : _settings,
+    portfolios  : cards.map(card => {
+      const id       = card.id.replace('card-', '');
+      const name     = card.querySelector('.card-title')?.textContent     || '';
+      const subtitle = card.querySelector('.card-subtitle')?.textContent  || '';
+      const rows     = Array.from(card.querySelectorAll('tbody tr[data-row]'));
+      const holdings = rows.map(row => ({
+        ticker   : row.querySelector('[data-ticker]')?.value              || '',
+        shares   : toNum(row.querySelector('[data-shares]')?.value),
+        price    : toNum(row.querySelector('[data-cost-basis]')?.value),
+        targetPct: toNum(row.querySelector('[data-target-pct]')?.value),
+        mktPrice : toNum(row.querySelector('[data-mkt-price]')?.value),
+      }));
+      return { id, name, subtitle, holdings };
+    }),
+  };
+
+  /* Always persist to localStorage so GitHub Pages retains data. */
   try {
-    const cards = Array.from(document.querySelectorAll('.portfolio-card'));
-    const state = {
-      portfolioSeq: _portfolioSeq,
-      settings    : _settings,
-      portfolios  : cards.map(card => {
-        const id       = card.id.replace('card-', '');
-        const name     = card.querySelector('.card-title')?.textContent     || '';
-        const subtitle = card.querySelector('.card-subtitle')?.textContent  || '';
-        const rows     = Array.from(card.querySelectorAll('tbody tr[data-row]'));
-        const holdings = rows.map(row => ({
-          ticker   : row.querySelector('[data-ticker]')?.value              || '',
-          shares   : toNum(row.querySelector('[data-shares]')?.value),
-          price    : toNum(row.querySelector('[data-cost-basis]')?.value),
-          targetPct: toNum(row.querySelector('[data-target-pct]')?.value),
-          mktPrice : toNum(row.querySelector('[data-mkt-price]')?.value),
-        }));
-        return { id, name, subtitle, holdings };
-      }),
-    };
+    localStorage.setItem(_LS_KEY, JSON.stringify(state));
+  } catch (e) {
+    console.warn('localStorage save failed:', e);
+  }
+
+  /* Also attempt to persist to the local server when available. */
+  try {
     await fetch('/api/data', {
       method : 'POST',
       headers: { 'Content-Type': 'application/json' },
       body   : JSON.stringify(state),
     });
   } catch (e) {
-    console.warn('_persistState failed:', e);
+    /* Server not available (e.g. GitHub Pages) — localStorage is the source of truth. */
   }
 }
 
 /**
- * Load portfolio data from the local server.
- * Returns true if valid data was found, false otherwise.
+ * Load portfolio data.
+ * Tries the local server first; falls back to localStorage (GitHub Pages).
+ * Returns true if valid saved data was found, false otherwise.
  */
 async function loadState() {
+  /* 1. Try local server. */
   try {
-    const res   = await fetch('/api/data');
-    if (!res.ok) return false;
-    const state = await res.json();
+    const res = await fetch('/api/data');
+    if (res.ok) {
+      const state = await res.json();
+      if (Array.isArray(state?.portfolios)) {
+        PORTFOLIOS    = state.portfolios.length > 0 ? state.portfolios : getDefaultPortfolios();
+        _portfolioSeq = state.portfolioSeq ?? PORTFOLIOS.length;
+        _settings     = state.settings ?? { finnhubKey: '' };
+        return true;
+      }
+    }
+  } catch (e) {
+    /* Server not available — fall through to localStorage. */
+  }
+
+  /* 2. Fall back to localStorage (used on GitHub Pages). */
+  try {
+    const raw = localStorage.getItem(_LS_KEY);
+    if (!raw) return false;
+    const state = JSON.parse(raw);
     if (!Array.isArray(state?.portfolios)) return false;
     PORTFOLIOS    = state.portfolios.length > 0 ? state.portfolios : getDefaultPortfolios();
     _portfolioSeq = state.portfolioSeq ?? PORTFOLIOS.length;
     _settings     = state.settings ?? { finnhubKey: '' };
     return true;
   } catch (e) {
-    console.warn('loadState failed:', e);
+    console.warn('loadState (localStorage) failed:', e);
     return false;
   }
 }
