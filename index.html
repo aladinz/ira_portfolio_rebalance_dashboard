@@ -94,15 +94,31 @@
         <span class="sync-status-msg" id="finnhub-key-status"></span>
       </div>
 
-      <!-- ── Data file info ────────────────────────────────── -->
+      <!-- ── JSONBin cloud storage ─────────────────────────── -->
       <div class="sync-section-divider"></div>
       <div class="sync-section">
-        <h3 class="sync-section-title">&#128190;&nbsp; Local Data File</h3>
+        <h3 class="sync-section-title">&#9729;&#65039;&nbsp; Cloud Save &mdash; JSONBin.io</h3>
         <p class="sync-intro">
-          All portfolio data is saved automatically to
-          <code>data/portfolio.json</code> inside the project folder.
-          To back up, copy that file. To restore, replace it and restart the server.
+          Paste your <strong>X-Master-Key</strong> from
+          <a href="https://jsonbin.io" target="_blank" rel="noopener">jsonbin.io</a>
+          to sync portfolios across browsers and devices.
+          A private storage bin is created automatically on first save.
         </p>
+        <label class="sync-field-label" for="jsonbin-key-input">X-Master-Key (Access Key)</label>
+        <div class="sync-pat-row">
+          <input type="password"
+                 id="jsonbin-key-input"
+                 class="sync-pat-input"
+                 placeholder="$2b$10$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                 autocomplete="off"
+                 spellcheck="false" />
+          <button class="btn btn-cloud-connect" onclick="saveJsonbinKey()">Save Key</button>
+        </div>
+        <span class="sync-status-msg" id="jsonbin-key-status"></span>
+        <div id="jsonbin-bin-row" style="margin-top:8px;display:none;">
+          <label class="sync-field-label">Bin ID (auto-assigned)</label>
+          <code id="jsonbin-id-display" style="font-size:0.82rem;color:var(--accent-teal,#00e5cc);word-break:break-all;"></code>
+        </div>
       </div>
 
     </div>

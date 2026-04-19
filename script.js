@@ -65,7 +65,7 @@ const nextRowId = () => `row-${++_rowId}`;
 let _portfolioSeq = PORTFOLIOS.length;
 
 /* ── In-memory settings (populated from server on startup) ──── */
-let _settings = { finnhubKey: '' };
+let _settings = { finnhubKey: '', jsonbinKey: '', jsonbinId: '' };
 const getFinnhubKey = () => _settings.finnhubKey || '';
 
 /* ── Price proxy map — Fidelity-only funds with no public API ── */
@@ -133,6 +133,46 @@ async function _persistState() {
     console.warn('localStorage save failed:', e);
   }
 
+  /* Sync to JSONBin when an API key is configured. */
+  if (_settings.jsonbinKey) {
+    try {
+      if (!_settings.jsonbinId) {
+        /* First save — auto-create a private bin. */
+        const res = await fetch('https://api.jsonbin.io/v3/b', {
+          method : 'POST',
+          headers: {
+            'Content-Type' : 'application/json',
+            'X-Master-Key' : _settings.jsonbinKey,
+            'X-Bin-Name'   : 'ira-portfolio-dashboard',
+            'X-Bin-Private': 'true',
+          },
+          body: JSON.stringify(state),
+        });
+        if (res.ok) {
+          const json = await res.json();
+          _settings.jsonbinId  = json.metadata.id;
+          state.settings.jsonbinId = json.metadata.id;
+          /* Persist the new binId back to localStorage. */
+          try { localStorage.setItem(_LS_KEY, JSON.stringify(state)); } catch (_) {}
+          /* Show the bin ID in the Settings modal if it is open. */
+          _updateJsonbinIdDisplay();
+        }
+      } else {
+        /* Subsequent saves — update the existing bin. */
+        await fetch(`https://api.jsonbin.io/v3/b/${_settings.jsonbinId}`, {
+          method : 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Master-Key': _settings.jsonbinKey,
+          },
+          body: JSON.stringify(state),
+        });
+      }
+    } catch (e) {
+      console.warn('JSONBin save failed:', e);
+    }
+  }
+
   /* Also persist to the local server when running locally. */
   if (_IS_LOCAL) {
     try {
@@ -153,7 +193,16 @@ async function _persistState() {
  * Returns true if valid saved data was found, false otherwise.
  */
 async function loadState() {
-  /* 1. Try local server (only when running locally). */
+  const _defaultSettings = () => ({ finnhubKey: '', jsonbinKey: '', jsonbinId: '' });
+
+  /* 1. Peek at localStorage to get credentials before attempting remote loads. */
+  let lsState = null;
+  try {
+    const raw = localStorage.getItem(_LS_KEY);
+    if (raw) lsState = JSON.parse(raw);
+  } catch (_) {}
+
+  /* 2. Try local server (only when running locally). */
   if (_IS_LOCAL) {
     try {
       const res = await fetch('/api/data');
@@ -162,29 +211,49 @@ async function loadState() {
         if (Array.isArray(state?.portfolios)) {
           PORTFOLIOS    = state.portfolios.length > 0 ? state.portfolios : getDefaultPortfolios();
           _portfolioSeq = state.portfolioSeq ?? PORTFOLIOS.length;
-          _settings     = state.settings ?? { finnhubKey: '' };
+          _settings     = { ..._defaultSettings(), ...state.settings };
           return true;
         }
       }
     } catch (e) {
-      /* Server not available — fall through to localStorage. */
+      /* Server not available — fall through. */
     }
   }
 
-  /* 2. Fall back to localStorage (used on GitHub Pages). */
-  try {
-    const raw = localStorage.getItem(_LS_KEY);
-    if (!raw) return false;
-    const state = JSON.parse(raw);
-    if (!Array.isArray(state?.portfolios)) return false;
-    PORTFOLIOS    = state.portfolios.length > 0 ? state.portfolios : getDefaultPortfolios();
-    _portfolioSeq = state.portfolioSeq ?? PORTFOLIOS.length;
-    _settings     = state.settings ?? { finnhubKey: '' };
-    return true;
-  } catch (e) {
-    console.warn('loadState (localStorage) failed:', e);
-    return false;
+  /* 3. Try JSONBin if credentials are stored in localStorage. */
+  const creds = lsState?.settings;
+  if (creds?.jsonbinKey && creds?.jsonbinId) {
+    try {
+      const res = await fetch(
+        `https://api.jsonbin.io/v3/b/${creds.jsonbinId}/latest`,
+        { headers: { 'X-Master-Key': creds.jsonbinKey } }
+      );
+      if (res.ok) {
+        const json  = await res.json();
+        const state = json.record;
+        if (Array.isArray(state?.portfolios)) {
+          PORTFOLIOS    = state.portfolios.length > 0 ? state.portfolios : getDefaultPortfolios();
+          _portfolioSeq = state.portfolioSeq ?? PORTFOLIOS.length;
+          _settings     = { ..._defaultSettings(), ...state.settings,
+                            jsonbinKey: creds.jsonbinKey, jsonbinId: creds.jsonbinId };
+          /* Refresh localStorage with the latest remote data. */
+          try { localStorage.setItem(_LS_KEY, JSON.stringify(state)); } catch (_) {}
+          return true;
+        }
+      }
+    } catch (e) {
+      console.warn('JSONBin load failed:', e);
+    }
   }
+
+  /* 4. Fall back to localStorage. */
+  if (lsState && Array.isArray(lsState?.portfolios)) {
+    PORTFOLIOS    = lsState.portfolios.length > 0 ? lsState.portfolios : getDefaultPortfolios();
+    _portfolioSeq = lsState.portfolioSeq ?? PORTFOLIOS.length;
+    _settings     = { ..._defaultSettings(), ...lsState.settings };
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -1293,8 +1362,14 @@ function openSettingsModal() {
   if (!backdrop) return;
   const fhInput  = document.getElementById('finnhub-key-input');
   const fhStatus = document.getElementById('finnhub-key-status');
-  if (fhInput)  fhInput.value       = getFinnhubKey() ? '••••••••••••••••••••••••••••••••' : '';
+  if (fhInput)  fhInput.value        = getFinnhubKey() ? '••••••••••••••••••••••••••••••••' : '';
   if (fhStatus) fhStatus.textContent = getFinnhubKey() ? '✓ Key saved — Fetch Prices will use Finnhub.' : '';
+  /* Populate JSONBin fields. */
+  const jbInput  = document.getElementById('jsonbin-key-input');
+  const jbStatus = document.getElementById('jsonbin-key-status');
+  if (jbInput)  jbInput.value        = _settings.jsonbinKey ? '••••••••••••••••••••••••••••••••' : '';
+  if (jbStatus) jbStatus.textContent = _settings.jsonbinKey ? '✓ Key saved — data syncs to JSONBin.' : '';
+  _updateJsonbinIdDisplay();
   backdrop.classList.add('active');
   if (!getFinnhubKey()) fhInput?.focus();
 }
@@ -1323,6 +1398,50 @@ function saveFinnhubKey() {
   if (input)    input.value = '••••••••••••••••••••••••••••••••';
   if (statusEl) statusEl.textContent = '✓ Key saved — Fetch Prices will now use Finnhub.';
   saveState();
+}
+
+/** Show or hide the Bin ID display row in the Settings modal. */
+function _updateJsonbinIdDisplay() {
+  const row     = document.getElementById('jsonbin-bin-row');
+  const display = document.getElementById('jsonbin-id-display');
+  if (!row || !display) return;
+  if (_settings.jsonbinId) {
+    display.textContent = _settings.jsonbinId;
+    row.style.display   = 'block';
+  } else {
+    row.style.display   = 'none';
+  }
+}
+
+/** Save or clear the JSONBin X-Master-Key; triggers a save to create the bin if needed. */
+function saveJsonbinKey() {
+  const input    = document.getElementById('jsonbin-key-input');
+  const statusEl = document.getElementById('jsonbin-key-status');
+  const val      = input?.value?.trim() ?? '';
+  if (!val || val.startsWith('•')) {
+    if (statusEl) statusEl.textContent = 'No change — paste a new key to update.';
+    return;
+  }
+  if (val === 'clear' || val === 'remove') {
+    _settings.jsonbinKey = '';
+    _settings.jsonbinId  = '';
+    if (input)    input.value = '';
+    if (statusEl) statusEl.textContent = 'JSONBin key removed — using localStorage only.';
+    _updateJsonbinIdDisplay();
+    saveState();
+    return;
+  }
+  _settings.jsonbinKey = val;
+  if (input)    input.value = '••••••••••••••••••••••••••••••••';
+  if (statusEl) statusEl.textContent = '✓ Key saved — syncing to JSONBin…';
+  /* Trigger a save immediately so the bin is created and the ID appears. */
+  _persistState().then(() => {
+    if (statusEl) statusEl.textContent = _settings.jsonbinId
+      ? `✓ Connected — Bin ID: ${_settings.jsonbinId}`
+      : '✓ Key saved — bin will be created on next save.';
+  }).catch(() => {
+    if (statusEl) statusEl.textContent = '⚠ Key saved but JSONBin sync failed — check the key.';
+  });
 }
 
 /* ================================================================
