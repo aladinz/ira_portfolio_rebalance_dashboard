@@ -498,6 +498,11 @@ function buildPortfolioCard(portfolio, cardNumber) {
                 title="Download this portfolio as a CSV file">
           <span aria-hidden="true">&#8595;</span> Export CSV
         </button>
+        <button class="btn btn-tax-layer"
+                onclick="generateTaxAwareSuggestion('${escAttr(portfolio.id)}')"
+                title="Stage 8 — Tax-Aware Rebalancing Analysis">
+          <span aria-hidden="true">&#9650;</span> Tax-Aware Analysis
+        </button>
         <div class="btn-divider" role="separator"></div>
         <button class="btn btn-add-row"
                 onclick="addRow('${escAttr(portfolio.id)}')"

@@ -948,6 +948,18 @@ body {
   color: #6ee7b7;
 }
 
+/* Tax-Aware Analysis — amber/gold tinted ghost (Stage 8) */
+.btn-tax-layer {
+  background: rgba(245, 158, 11, .08);
+  border-color: rgba(245, 158, 11, .35);
+  color: #f59e0b;
+}
+.btn-tax-layer:hover {
+  background: rgba(245, 158, 11, .18);
+  border-color: #f59e0b;
+  color: #fcd34d;
+}
+
 /* Add holding — ghost */
 .btn-add-row {
   background: transparent;
