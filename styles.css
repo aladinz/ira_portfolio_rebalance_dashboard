@@ -220,7 +220,30 @@ body {
   outline: none;
 }
 
-/* Cloud Sync button — in site header */
+/* Settings button — in site header (replaces Cloud Sync button) */
+.btn-settings {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  font-size: 11.5px;
+  font-weight: 500;
+  font-family: var(--font-ui);
+  background: transparent;
+  border: 1px solid var(--border-normal);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  letter-spacing: .03em;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.btn-settings:hover {
+  background: var(--bg-row-hover);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+/* Cloud Sync button — kept for reference but no longer used */
 .btn-cloud-sync {
   display: inline-flex;
   align-items: center;
