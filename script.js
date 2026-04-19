@@ -103,6 +103,7 @@ function saveState() {
 }
 
 const _LS_KEY = 'ira-dashboard-state';
+const _IS_LOCAL = ['localhost', '127.0.0.1'].includes(location.hostname);
 
 async function _persistState() {
   const cards = Array.from(document.querySelectorAll('.portfolio-card'));
@@ -132,15 +133,17 @@ async function _persistState() {
     console.warn('localStorage save failed:', e);
   }
 
-  /* Also attempt to persist to the local server when available. */
-  try {
-    await fetch('/api/data', {
-      method : 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body   : JSON.stringify(state),
-    });
-  } catch (e) {
-    /* Server not available (e.g. GitHub Pages) — localStorage is the source of truth. */
+  /* Also persist to the local server when running locally. */
+  if (_IS_LOCAL) {
+    try {
+      await fetch('/api/data', {
+        method : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body   : JSON.stringify(state),
+      });
+    } catch (e) {
+      console.warn('Server save failed:', e);
+    }
   }
 }
 
@@ -150,20 +153,22 @@ async function _persistState() {
  * Returns true if valid saved data was found, false otherwise.
  */
 async function loadState() {
-  /* 1. Try local server. */
-  try {
-    const res = await fetch('/api/data');
-    if (res.ok) {
-      const state = await res.json();
-      if (Array.isArray(state?.portfolios)) {
-        PORTFOLIOS    = state.portfolios.length > 0 ? state.portfolios : getDefaultPortfolios();
-        _portfolioSeq = state.portfolioSeq ?? PORTFOLIOS.length;
-        _settings     = state.settings ?? { finnhubKey: '' };
-        return true;
+  /* 1. Try local server (only when running locally). */
+  if (_IS_LOCAL) {
+    try {
+      const res = await fetch('/api/data');
+      if (res.ok) {
+        const state = await res.json();
+        if (Array.isArray(state?.portfolios)) {
+          PORTFOLIOS    = state.portfolios.length > 0 ? state.portfolios : getDefaultPortfolios();
+          _portfolioSeq = state.portfolioSeq ?? PORTFOLIOS.length;
+          _settings     = state.settings ?? { finnhubKey: '' };
+          return true;
+        }
       }
+    } catch (e) {
+      /* Server not available — fall through to localStorage. */
     }
-  } catch (e) {
-    /* Server not available — fall through to localStorage. */
   }
 
   /* 2. Fall back to localStorage (used on GitHub Pages). */
