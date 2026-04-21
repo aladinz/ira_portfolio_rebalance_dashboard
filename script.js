@@ -1402,39 +1402,54 @@ function saveFinnhubKey() {
 
 /** Show or hide the Bin ID display row in the Settings modal. */
 function _updateJsonbinIdDisplay() {
-  const row     = document.getElementById('jsonbin-bin-row');
-  const display = document.getElementById('jsonbin-id-display');
-  if (!row || !display) return;
+  const input = document.getElementById('jsonbin-id-input');
+  if (!input) return;
   if (_settings.jsonbinId) {
-    display.textContent = _settings.jsonbinId;
-    row.style.display   = 'block';
-  } else {
-    row.style.display   = 'none';
+    input.value = _settings.jsonbinId;
   }
 }
 
 /** Save or clear the JSONBin X-Master-Key; triggers a save to create the bin if needed. */
 function saveJsonbinKey() {
   const input    = document.getElementById('jsonbin-key-input');
+  const idInput  = document.getElementById('jsonbin-id-input');
   const statusEl = document.getElementById('jsonbin-key-status');
   const val      = input?.value?.trim() ?? '';
   if (!val || val.startsWith('•')) {
-    if (statusEl) statusEl.textContent = 'No change — paste a new key to update.';
+    /* No new key — but still allow updating the Bin ID alone. */
+    const newId = idInput?.value?.trim() ?? '';
+    if (newId && newId !== _settings.jsonbinId) {
+      _settings.jsonbinId = newId;
+      if (statusEl) statusEl.textContent = '↺ Bin ID updated — loading your data…';
+      _loadFromJsonbin(statusEl);
+    } else {
+      if (statusEl) statusEl.textContent = 'No change — paste a new key to update.';
+    }
     return;
   }
   if (val === 'clear' || val === 'remove') {
     _settings.jsonbinKey = '';
     _settings.jsonbinId  = '';
     if (input)    input.value = '';
+    if (idInput)  idInput.value = '';
     if (statusEl) statusEl.textContent = 'JSONBin key removed — using localStorage only.';
-    _updateJsonbinIdDisplay();
     saveState();
     return;
   }
   _settings.jsonbinKey = val;
-  if (input)    input.value = '••••••••••••••••••••••••••••••••';
+  if (input) input.value = '••••••••••••••••••••••••••••••••';
+
+  /* If the user also provided an existing Bin ID, use it to load their data. */
+  const providedId = idInput?.value?.trim() ?? '';
+  if (providedId) {
+    _settings.jsonbinId = providedId;
+    if (statusEl) statusEl.textContent = '↺ Key saved — loading data from your existing bin…';
+    _loadFromJsonbin(statusEl);
+    return;
+  }
+
   if (statusEl) statusEl.textContent = '✓ Key saved — syncing to JSONBin…';
-  /* Trigger a save immediately so the bin is created and the ID appears. */
+  /* No Bin ID provided — trigger a save so a new bin is created. */
   _persistState().then(() => {
     if (statusEl) statusEl.textContent = _settings.jsonbinId
       ? `✓ Connected — Bin ID: ${_settings.jsonbinId}`
@@ -1442,6 +1457,40 @@ function saveJsonbinKey() {
   }).catch(() => {
     if (statusEl) statusEl.textContent = '⚠ Key saved but JSONBin sync failed — check the key.';
   });
+}
+
+/**
+ * Fetch data from the configured JSONBin bin and replace the current portfolios.
+ * Called when the user provides an existing Bin ID on a new device.
+ *
+ * @param {HTMLElement|null} statusEl  Status message element to update.
+ */
+async function _loadFromJsonbin(statusEl) {
+  try {
+    const res = await fetch(
+      `https://api.jsonbin.io/v3/b/${_settings.jsonbinId}/latest`,
+      { headers: { 'X-Master-Key': _settings.jsonbinKey } }
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json  = await res.json();
+    const state = json.record;
+    if (!Array.isArray(state?.portfolios)) throw new Error('Unexpected bin format.');
+    PORTFOLIOS    = state.portfolios.length > 0 ? state.portfolios : getDefaultPortfolios();
+    _portfolioSeq = state.portfolioSeq ?? PORTFOLIOS.length;
+    /* Keep current credentials; merge everything else from the bin. */
+    _settings = {
+      ..._settings,
+      finnhubKey: state.settings?.finnhubKey || _settings.finnhubKey,
+    };
+    /* Persist locally so next page-load skips this step. */
+    try { localStorage.setItem(_LS_KEY, JSON.stringify({ ...state, settings: _settings })); } catch (_) {}
+    _updateJsonbinIdDisplay();
+    renderDashboard();
+    if (statusEl) statusEl.textContent = `✓ Data loaded — Bin ID: ${_settings.jsonbinId}`;
+  } catch (e) {
+    console.warn('_loadFromJsonbin failed:', e);
+    if (statusEl) statusEl.textContent = `⚠ Could not load bin — check the Bin ID and key. (${e.message})`;
+  }
 }
 
 /* ================================================================

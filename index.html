@@ -103,6 +103,8 @@
           <a href="https://jsonbin.io" target="_blank" rel="noopener">jsonbin.io</a>
           to sync portfolios across browsers and devices.
           A private storage bin is created automatically on first save.
+          <strong>On a new device</strong>, also paste your existing Bin ID below so the app
+          loads your saved data instead of starting fresh.
         </p>
         <label class="sync-field-label" for="jsonbin-key-input">X-Master-Key (Access Key)</label>
         <div class="sync-pat-row">
@@ -115,9 +117,17 @@
           <button class="btn btn-cloud-connect" onclick="saveJsonbinKey()">Save Key</button>
         </div>
         <span class="sync-status-msg" id="jsonbin-key-status"></span>
-        <div id="jsonbin-bin-row" style="margin-top:8px;display:none;">
-          <label class="sync-field-label">Bin ID (auto-assigned)</label>
-          <code id="jsonbin-id-display" style="font-size:0.82rem;color:var(--accent-teal,#00e5cc);word-break:break-all;"></code>
+        <div style="margin-top:8px;">
+          <label class="sync-field-label" for="jsonbin-id-input">
+            Bin ID — <em style="font-weight:400;opacity:0.75;">auto-assigned on first save; paste here when setting up a new device</em>
+          </label>
+          <input type="text"
+                 id="jsonbin-id-input"
+                 class="sync-pat-input"
+                 placeholder="leave blank to auto-create a new bin"
+                 autocomplete="off"
+                 spellcheck="false"
+                 style="width:100%;box-sizing:border-box;" />
         </div>
       </div>
 
