@@ -5,235 +5,394 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>IRA Portfolio Metrics Dashboard</title>
   <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
   <style>
-    /* ── Metrics Dashboard Specific Styles ── */
+    /* ── Enhanced Dashboard Styles ── */
+    body {
+      background: linear-gradient(135deg, #07090f 0%, #0a0f1a 100%);
+    }
+
     .metrics-container {
-      max-width: 1680px;
+      max-width: 1800px;
       margin: 0 auto;
-      padding: 24px;
+      padding: 32px 24px;
     }
 
     .metrics-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 32px;
+      margin-bottom: 40px;
       flex-wrap: wrap;
-      gap: 16px;
+      gap: 24px;
     }
 
-    .metrics-title {
-      font-size: 2rem;
-      font-weight: 800;
-      color: var(--text-primary);
-      letter-spacing: .01em;
+    .metrics-title-group h1 {
+      font-size: 2.8rem;
+      font-weight: 900;
+      background: linear-gradient(135deg, #1e8fe0, #00c8a0);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin: 0;
+      letter-spacing: -.02em;
+    }
+
+    .metrics-title-group p {
+      font-size: 1rem;
+      color: var(--text-secondary);
+      margin: 8px 0 0 0;
     }
 
     .metrics-nav-btn {
-      padding: 10px 18px;
+      padding: 12px 24px;
       font-size: 13px;
-      font-weight: 600;
-      background: var(--accent-blue-bg);
-      border: 1px solid var(--accent-blue-bdr);
-      color: var(--accent-blue);
-      border-radius: 6px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #1e8fe0, #00c8a0);
+      border: none;
+      color: #fff;
+      border-radius: 8px;
       cursor: pointer;
       text-decoration: none;
-      transition: background .15s, transform .12s;
+      transition: all .2s;
+      box-shadow: 0 4px 16px rgba(30,143,224,.25);
     }
 
     .metrics-nav-btn:hover {
-      background: rgba(30,143,224,.22);
-      transform: translateY(-1px);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 24px rgba(30,143,224,.35);
     }
 
+    /* Overview Section */
     .metrics-overview {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-      gap: 18px;
-      margin-bottom: 32px;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 20px;
+      margin-bottom: 40px;
     }
 
     .metric-card {
-      background: var(--bg-surface);
+      background: linear-gradient(135deg, var(--bg-surface) 0%, #0f1828 100%);
       border: 1px solid var(--border-subtle);
-      border-radius: 10px;
-      padding: 20px;
-      box-shadow: 0 2px 12px rgba(0,0,0,.25);
-      transition: transform .15s, border-color .15s;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 8px 32px rgba(0,0,0,.3);
+      transition: all .3s cubic-bezier(.23, 1, .320, 1);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .metric-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, #1e8fe0, #00c8a0);
+      opacity: 0;
+      transition: opacity .3s;
     }
 
     .metric-card:hover {
+      transform: translateY(-4px);
       border-color: var(--border-normal);
-      transform: translateY(-2px);
+      box-shadow: 0 12px 48px rgba(0,0,0,.4);
+    }
+
+    .metric-card:hover::before {
+      opacity: 1;
     }
 
     .metric-label {
       font-size: 11px;
       color: var(--text-muted);
       text-transform: uppercase;
-      letter-spacing: .08em;
-      margin-bottom: 8px;
+      letter-spacing: .12em;
+      margin-bottom: 12px;
+      font-weight: 600;
     }
 
     .metric-value {
-      font-size: 1.8rem;
-      font-weight: 800;
+      font-size: 2.2rem;
+      font-weight: 900;
       font-family: var(--font-mono);
       color: var(--accent-blue);
-      margin-bottom: 6px;
+      margin-bottom: 8px;
+      letter-spacing: -.01em;
     }
 
-    .metric-value.gain { color: var(--color-ok); }
-    .metric-value.warn { color: var(--color-warn); }
-    .metric-value.danger { color: var(--color-danger); }
+    .metric-value.gain { color: #28d890; }
+    .metric-value.danger { color: #f05060; }
 
     .metric-sub {
-      font-size: 12px;
+      font-size: 12.5px;
       color: var(--text-secondary);
+      line-height: 1.4;
+    }
+
+    /* Charts Section */
+    .charts-section {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      gap: 24px;
+      margin-bottom: 40px;
+    }
+
+    .chart-card {
+      background: linear-gradient(135deg, var(--bg-surface) 0%, #0f1828 100%);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 28px;
+      box-shadow: 0 8px 32px rgba(0,0,0,.3);
+    }
+
+    .chart-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 20px;
+      letter-spacing: -.01em;
+    }
+
+    .chart-container {
+      position: relative;
+      height: 300px;
+    }
+
+    /* Portfolio Grid */
+    .portfolio-grid-header {
+      font-size: 1.4rem;
+      font-weight: 800;
+      color: var(--text-primary);
+      margin-bottom: 24px;
+      letter-spacing: -.01em;
     }
 
     .portfolio-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-      gap: 20px;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 24px;
+      margin-bottom: 40px;
     }
 
     .portfolio-summary-card {
-      background: var(--bg-surface);
+      background: linear-gradient(135deg, var(--bg-surface) 0%, #0f1828 100%);
       border: 1px solid var(--border-subtle);
-      border-radius: 10px;
-      padding: 22px;
-      box-shadow: 0 4px 16px rgba(0,0,0,.3);
+      border-radius: 12px;
+      padding: 28px;
+      box-shadow: 0 8px 32px rgba(0,0,0,.3);
+      transition: all .3s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .portfolio-summary-card::after {
+      content: '';
+      position: absolute;
+      top: -50%;
+      right: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(circle, rgba(30,143,224,.1) 0%, transparent 70%);
+      opacity: 0;
+      transition: opacity .3s;
+    }
+
+    .portfolio-summary-card:hover {
+      transform: translateY(-4px);
+      border-color: var(--border-normal);
+      box-shadow: 0 12px 48px rgba(0,0,0,.4);
+    }
+
+    .portfolio-summary-card:hover::after {
+      opacity: 1;
     }
 
     .portfolio-summary-header {
       display: flex;
       align-items: flex-start;
       justify-content: space-between;
-      margin-bottom: 18px;
-      padding-bottom: 14px;
-      border-bottom: 1px solid var(--border-normal);
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 2px solid var(--border-subtle);
     }
 
     .portfolio-summary-title {
-      font-size: 16px;
-      font-weight: 700;
+      font-size: 1.3rem;
+      font-weight: 800;
       color: var(--text-primary);
+      letter-spacing: -.01em;
     }
 
     .portfolio-summary-sub {
-      font-size: 11px;
+      font-size: 12px;
       color: var(--text-secondary);
-      margin-top: 2px;
+      margin-top: 4px;
     }
 
     .portfolio-badge {
-      display: inline-block;
-      padding: 4px 10px;
-      background: var(--accent-blue-bg);
-      border: 1px solid var(--accent-blue-bdr);
-      color: var(--accent-blue);
-      border-radius: 4px;
-      font-size: 11px;
-      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, #1e8fe0, #00c8a0);
+      border-radius: 10px;
+      color: #fff;
+      font-size: 16px;
+      font-weight: 900;
+      flex-shrink: 0;
     }
 
-    .portfolio-metrics-row {
-      display: flex;
-      justify-content: space-between;
-      margin-bottom: 12px;
+    .portfolio-metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 14px;
+      margin-bottom: 20px;
     }
 
     .portfolio-metric-item {
-      display: flex;
-      flex-direction: column;
-      gap: 3px;
+      background: var(--bg-table-head);
+      padding: 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border-subtle);
     }
 
     .portfolio-metric-label {
       font-size: 10px;
       color: var(--text-muted);
       text-transform: uppercase;
-      letter-spacing: .06em;
+      letter-spacing: .08em;
+      margin-bottom: 6px;
+      font-weight: 700;
     }
 
     .portfolio-metric-val {
-      font-size: 13px;
-      font-weight: 700;
+      font-size: 14.5px;
+      font-weight: 800;
       font-family: var(--font-mono);
-      color: var(--text-primary);
+      color: var(--accent-blue);
     }
 
     .holdings-mini-list {
       background: var(--bg-table-head);
-      border-radius: 6px;
-      padding: 12px;
-      margin-top: 14px;
-      max-height: 120px;
+      border-radius: 8px;
+      padding: 14px;
+      max-height: 140px;
       overflow-y: auto;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .holdings-mini-title {
+      font-size: 10px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      font-weight: 700;
     }
 
     .holding-mini {
       display: flex;
       justify-content: space-between;
-      font-size: 11px;
-      padding: 4px 0;
+      font-size: 11.5px;
+      padding: 5px 0;
       color: var(--text-secondary);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .holding-mini:last-child {
+      border-bottom: none;
     }
 
     .holding-ticker {
-      font-weight: 600;
-      color: var(--text-primary);
+      font-weight: 700;
+      color: var(--accent-blue);
       font-family: var(--font-mono);
+      letter-spacing: .02em;
     }
 
     .dashboard-footer-link {
       text-align: center;
-      margin-top: 32px;
-      padding-top: 24px;
-      border-top: 1px solid var(--border-subtle);
+      padding: 32px 24px;
+      border-top: 2px solid var(--border-subtle);
+      margin-top: 40px;
     }
 
     .dashboard-footer-link a {
       display: inline-block;
-      padding: 14px 28px;
-      background: linear-gradient(90deg, #1e8fe0 0%, #00c8a0 100%);
+      padding: 16px 40px;
+      background: linear-gradient(135deg, #1e8fe0, #00c8a0);
       color: #fff;
       text-decoration: none;
-      border-radius: 7px;
-      font-weight: 700;
-      font-size: 13px;
-      transition: transform .15s, box-shadow .15s;
-      box-shadow: 0 2px 12px rgba(30,143,224,.18);
+      border-radius: 10px;
+      font-weight: 800;
+      font-size: 14px;
+      transition: all .2s;
+      box-shadow: 0 6px 20px rgba(30,143,224,.3);
+      letter-spacing: -.01em;
     }
 
     .dashboard-footer-link a:hover {
       transform: translateY(-2px);
-      box-shadow: 0 4px 18px rgba(30,143,224,.28);
+      box-shadow: 0 8px 28px rgba(30,143,224,.4);
     }
 
-    .no-data {
+    .empty-state {
       text-align: center;
-      padding: 40px 20px;
+      padding: 60px 20px;
       color: var(--text-muted);
     }
 
-    .no-data p {
+    .empty-state-icon {
+      font-size: 3rem;
+      margin-bottom: 16px;
+      opacity: .5;
+    }
+
+    .empty-state p {
       font-size: 14px;
       margin-bottom: 16px;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .metrics-title-group h1 {
+        font-size: 2rem;
+      }
+
+      .metrics-overview {
+        grid-template-columns: 1fr;
+      }
+
+      .charts-section {
+        grid-template-columns: 1fr;
+      }
+
+      .portfolio-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .metric-value {
+        font-size: 1.8rem;
+      }
+
+      .chart-container {
+        height: 250px;
+      }
     }
   </style>
 </head>
 <body>
-  <!-- Site Header (reuse from main app) -->
+  <!-- Site Header -->
   <header class="site-header">
     <div class="header-inner">
       <div class="header-brand">
         <span class="brand-mark">◈</span>
         <div class="brand-text">
-          <h1 class="brand-title">IRA Portfolio Dashboard</h1>
-          <p class="brand-sub">Portfolio Metrics &amp; Overview</p>
+          <h1 class="brand-title">IRA Portfolio Metrics</h1>
+          <p class="brand-sub">Advanced Analytics &amp; Insights</p>
         </div>
       </div>
       <div class="header-right">
@@ -245,32 +404,50 @@
   <!-- Main Content -->
   <main class="metrics-container">
     <div class="metrics-header">
-      <div>
-        <h2 class="metrics-title">Your Portfolio Metrics</h2>
+      <div class="metrics-title-group">
+        <h1>Your Portfolio Overview</h1>
+        <p>Real-time metrics, allocation analysis, and returns forecast</p>
       </div>
-      <a href="index.html" class="metrics-nav-btn">→ Go to Rebalance Dashboard</a>
+      <a href="index.html" class="metrics-nav-btn">→ Detailed Rebalance Tool</a>
     </div>
 
-    <!-- Overview Cards -->
+    <!-- Overview Metrics -->
     <div class="metrics-overview" id="overview-metrics">
       <!-- Populated by JavaScript -->
     </div>
 
-    <!-- Portfolio Summaries -->
+    <!-- Charts Section -->
+    <div class="charts-section">
+      <div class="chart-card">
+        <div class="chart-title">Portfolio Allocation</div>
+        <div class="chart-container">
+          <canvas id="allocationChart"></canvas>
+        </div>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-title">Expected Annual Returns</div>
+        <div class="chart-container">
+          <canvas id="returnsChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Portfolio Breakdown -->
     <div id="portfolio-summaries-section">
-      <h3 style="font-size:1.3rem; font-weight:700; color:var(--text-primary); margin-bottom:18px; letter-spacing:.01em;">Portfolio Breakdown</h3>
+      <div class="portfolio-grid-header">Portfolio Breakdown</div>
       <div class="portfolio-grid" id="portfolio-cards">
         <!-- Populated by JavaScript -->
       </div>
     </div>
 
     <div class="dashboard-footer-link">
-      <a href="index.html">Open Full Rebalance Dashboard →</a>
+      <a href="index.html">Open Full Rebalancing Dashboard →</a>
     </div>
   </main>
 
   <script>
-    // Expected annual return assumptions (same as in script.js)
+    // Expected annual return assumptions
     const EXPECTED_RETURNS = {
       VTI: 0.07, QQQ: 0.08, VXUS: 0.06, BND: 0.03, GLD: 0.025,
       SCHD: 0.065, VYM: 0.06, VGIT: 0.03, VTIP: 0.03, VNQ: 0.06,
@@ -278,7 +455,9 @@
       VBT: 0.08, GLDM: 0.025, USHV: 0.065, BNDW: 0.03,
     };
 
-    // Get demo portfolios (fallback if API is unavailable)
+    let allocationChartInstance = null;
+    let returnsChartInstance = null;
+
     function getDefaultPortfolios() {
       return [
         {
@@ -334,7 +513,6 @@
         const expPct = EXPECTED_RETURNS[ticker] ?? 0.05;
         expectedReturnAmount += currentValue * expPct;
 
-        // Count drift alerts
         if (totalValue > 0) {
           const currentPct = (currentValue / totalValue) * 100;
           const driftPct = currentPct - h.targetPct;
@@ -353,8 +531,96 @@
       };
     }
 
+    function renderCharts(portfolios) {
+      const colors = ['#1e8fe0', '#00c8a0', '#f5a623', '#48aaee', '#28d890'];
+      
+      // Allocation Chart (Pie)
+      const portNames = portfolios.map(p => p.name);
+      const portValues = portfolios.map((p, idx) => {
+        const m = calculatePortfolioMetrics(p);
+        return m.totalValue;
+      });
+
+      const ctxAllocation = document.getElementById('allocationChart')?.getContext('2d');
+      if (ctxAllocation && allocationChartInstance) {
+        allocationChartInstance.destroy();
+      }
+      if (ctxAllocation) {
+        allocationChartInstance = new Chart(ctxAllocation, {
+          type: 'doughnut',
+          data: {
+            labels: portNames,
+            datasets: [{
+              data: portValues,
+              backgroundColor: colors,
+              borderColor: '#0d1320',
+              borderWidth: 2,
+            }],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                position: 'bottom',
+                labels: {
+                  color: '#c8d8f0',
+                  font: { size: 12, weight: '600' },
+                  padding: 12,
+                },
+              },
+            },
+          },
+        });
+      }
+
+      // Returns Chart (Bar)
+      const portReturns = portfolios.map((p, idx) => {
+        const m = calculatePortfolioMetrics(p);
+        return m.expectedReturnAmount;
+      });
+
+      const ctxReturns = document.getElementById('returnsChart')?.getContext('2d');
+      if (ctxReturns && returnsChartInstance) {
+        returnsChartInstance.destroy();
+      }
+      if (ctxReturns) {
+        returnsChartInstance = new Chart(ctxReturns, {
+          type: 'bar',
+          data: {
+            labels: portNames,
+            datasets: [{
+              label: 'Annual Return ($)',
+              data: portReturns,
+              backgroundColor: colors,
+              borderRadius: 6,
+              borderSkipped: false,
+            }],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                labels: { color: '#c8d8f0', font: { size: 12 } },
+              },
+            },
+            scales: {
+              y: {
+                ticks: { color: '#6a8bb0', font: { size: 11 } },
+                grid: { color: 'rgba(30,48,80,.2)' },
+              },
+              x: {
+                ticks: { color: '#6a8bb0', font: { size: 11 } },
+                grid: { display: false },
+              },
+            },
+          },
+        });
+      }
+    }
+
     function renderDashboard(portfolios) {
-      // Calculate overview metrics
       let grandTotal = 0;
       let grandExpectedReturn = 0;
       let totalAlerts = 0;
@@ -368,32 +634,32 @@
         totalAlerts += m.driftAlerts;
       });
 
-      // Render overview cards
+      // Overview cards
       const overviewEl = document.getElementById('overview-metrics');
       overviewEl.innerHTML = `
         <div class="metric-card">
-          <div class="metric-label">Total AUM</div>
+          <div class="metric-label">Total Assets Under Management</div>
           <div class="metric-value gain">${formatCurrency(grandTotal)}</div>
-          <div class="metric-sub">All portfolios combined</div>
+          <div class="metric-sub">Across ${portfolios.length} portfolios</div>
         </div>
         <div class="metric-card">
-          <div class="metric-label">Expected Annual Return</div>
+          <div class="metric-label">Projected Annual Return</div>
           <div class="metric-value">${formatCurrency(grandExpectedReturn)}</div>
-          <div class="metric-sub">${formatPercent((grandExpectedReturn / grandTotal) * 100)} annualized</div>
+          <div class="metric-sub">${grandTotal > 0 ? formatPercent((grandExpectedReturn / grandTotal) * 100) : '—'} annualized</div>
         </div>
         <div class="metric-card">
           <div class="metric-label">Total Holdings</div>
           <div class="metric-value">${portfolios.reduce((s, p) => s + p.holdings.length, 0)}</div>
-          <div class="metric-sub">Across all portfolios</div>
+          <div class="metric-sub">Securities across accounts</div>
         </div>
         <div class="metric-card">
-          <div class="metric-label">Drift Alerts</div>
-          <div class="metric-value ${totalAlerts > 0 ? 'danger' : 'gain'}">${totalAlerts}</div>
-          <div class="metric-sub">${totalAlerts > 0 ? 'Rebalancing needed' : 'All within tolerance'}</div>
+          <div class="metric-label">Rebalancing Alerts</div>
+          <div class="metric-value ${totalAlerts > 0 ? 'danger' : ''}">${totalAlerts}</div>
+          <div class="metric-sub">${totalAlerts > 0 ? 'Action needed' : 'Well balanced'}</div>
         </div>
       `;
 
-      // Render portfolio cards
+      // Portfolio cards
       const portfolioCardsEl = document.getElementById('portfolio-cards');
       portfolioCardsEl.innerHTML = portfolios.map((p, idx) => {
         const m = portMetrics[idx];
@@ -406,10 +672,10 @@
                 <div class="portfolio-summary-title">${p.name}</div>
                 <div class="portfolio-summary-sub">${p.subtitle}</div>
               </div>
-              <span class="portfolio-badge">#${idx + 1}</span>
+              <div class="portfolio-badge">${idx + 1}</div>
             </div>
 
-            <div class="portfolio-metrics-row">
+            <div class="portfolio-metrics-grid">
               <div class="portfolio-metric-item">
                 <div class="portfolio-metric-label">Total Value</div>
                 <div class="portfolio-metric-val">${formatCurrency(m.totalValue)}</div>
@@ -418,21 +684,18 @@
                 <div class="portfolio-metric-label">Expected Return</div>
                 <div class="portfolio-metric-val">${formatCurrency(m.expectedReturnAmount)}</div>
               </div>
-            </div>
-
-            <div class="portfolio-metrics-row">
               <div class="portfolio-metric-item">
                 <div class="portfolio-metric-label">Return %</div>
                 <div class="portfolio-metric-val" style="color:var(--accent-blue);">${formatPercent(expReturnPct)}</div>
               </div>
               <div class="portfolio-metric-item">
-                <div class="portfolio-metric-label">Drift Alerts</div>
-                <div class="portfolio-metric-val" style="color:${m.driftAlerts > 0 ? 'var(--color-danger)' : 'var(--color-ok)'};">${m.driftAlerts}</div>
+                <div class="portfolio-metric-label">Alerts</div>
+                <div class="portfolio-metric-val" style="color:${m.driftAlerts > 0 ? '#f05060' : '#28d890'};">${m.driftAlerts}</div>
               </div>
             </div>
 
             <div class="holdings-mini-list">
-              <div style="font-size:10px; color:var(--text-muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:.06em; font-weight:600;">Holdings (${m.holdingCount})</div>
+              <div class="holdings-mini-title">Top Holdings (${m.holdingCount})</div>
               ${p.holdings.map(h => {
                 const price = h.mktPrice > 0 ? h.mktPrice : h.price || 0;
                 const val = (h.shares || 0) * price;
@@ -447,6 +710,9 @@
           </div>
         `;
       }).join('');
+
+      // Render charts
+      renderCharts(portfolios);
     }
 
     function setCurrentDate() {
@@ -458,7 +724,6 @@
       }
     }
 
-    // Load portfolio data from API or use demo data
     async function loadPortfolioData() {
       try {
         const response = await fetch('/api/data');
@@ -472,7 +737,6 @@
       return getDefaultPortfolios();
     }
 
-    // Initialize on page load
     document.addEventListener('DOMContentLoaded', async () => {
       setCurrentDate();
       const portfolios = await loadPortfolioData();
