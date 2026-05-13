@@ -23,12 +23,10 @@
       </div>
       <div class="header-right">
         <span class="save-indicator" id="save-indicator">&#10003;&nbsp;Saved</span>
-        <button class="btn btn-cloud-sync" id="btn-cloud-sync"
-                onclick="openSyncModal()"
-                title="Cloud Sync &mdash; Not connected (click to set up)">
-          <span class="sync-icon" aria-hidden="true">&#9729;</span>
-          <span class="sync-label">Cloud Sync</span>
-          <span class="sync-dot" aria-hidden="true"></span>
+        <button class="btn btn-settings" id="btn-settings"
+                onclick="openSettingsModal()"
+                title="Settings &mdash; Finnhub API key">
+          <span aria-hidden="true">&#9881;</span> Settings
         </button>
         <button class="btn btn-reset-demo" onclick="resetToDemo()" title="Clear saved data and restore original demo portfolios">&#8635; Reset Demo</button>
         <span class="header-date" id="current-date"></span>
@@ -66,72 +64,22 @@
     </div>
   </div>
 
-  <!-- ── Cloud Sync Modal ─────────────────────────────────── -->
-  <div class="modal-backdrop" id="sync-modal-backdrop">
-    <div class="modal sync-modal" role="dialog" aria-modal="true" aria-labelledby="sync-modal-title">
+  <!-- ── Settings Modal ──────────────────────────────────── -->
+  <div class="modal-backdrop" id="settings-modal-backdrop">
+    <div class="modal sync-modal" role="dialog" aria-modal="true" aria-labelledby="settings-modal-title">
 
       <div class="modal-header">
-        <h2 class="modal-title" id="sync-modal-title">&#9729;&nbsp; Cloud Sync &mdash; GitHub Gist</h2>
-        <button class="modal-close-btn" id="sync-modal-close" aria-label="Close">✕</button>
-      </div>
-
-      <!-- ── NOT connected view ───────────────────────────── -->
-      <div id="sync-view-disconnected" class="sync-view" style="display:flex">
-        <p class="sync-intro">
-          Your portfolio data will be saved as a <strong>private GitHub Gist</strong> and
-          accessible from any browser. You only need to enter your token once per device.
-        </p>
-
-        <div class="sync-instructions">
-          <strong>How to get a token:</strong>
-          <ol>
-            <li>Go to <code>github.com &rarr; Settings &rarr; Developer settings &rarr; Personal access tokens &rarr; Fine-grained tokens</code> (or classic tokens).</li>
-            <li>Create a new token with the <code>gist</code> scope only.</li>
-            <li>Copy the token and paste it below &mdash; it is stored only in <em>this browser</em>.</li>
-          </ol>
-        </div>
-
-        <label class="sync-field-label" for="sync-pat-input">Personal Access Token</label>
-        <div class="sync-pat-row">
-          <input type="password"
-                 id="sync-pat-input"
-                 class="sync-pat-input"
-                 placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
-                 autocomplete="off"
-                 spellcheck="false" />
-          <button class="btn btn-cloud-connect" id="btn-sync-connect" onclick="connectGist()">Connect</button>
-        </div>
-      </div>
-
-      <!-- ── CONNECTED view ───────────────────────────────── -->
-      <div id="sync-view-connected" class="sync-view" style="display:none">
-        <div class="sync-connected-badge">
-          <span class="sync-dot connected" aria-hidden="true"></span>
-          Connected to GitHub Gist
-        </div>
-        <div class="sync-gist-row">
-          <span class="sync-field-label">Gist ID</span>
-          <code id="sync-gist-id-display" class="sync-gist-id">&mdash;</code>
-        </div>
-        <div class="sync-action-row">
-          <button class="btn btn-cloud-pull" onclick="pullFromGist()">&#8595;&nbsp; Pull from Gist</button>
-          <button class="btn btn-cloud-push" onclick="pushToGist()">&#8593;&nbsp; Push to Gist</button>
-          <button class="btn btn-cloud-disconnect" onclick="disconnectGist()">Disconnect</button>
-        </div>
-        <p class="sync-note">
-          Data is <strong>auto-pushed</strong> on every save. Use <em>Pull</em> to load
-          the latest version from another device, or <em>Push</em> to force an upload.
-        </p>
+        <h2 class="modal-title" id="settings-modal-title">&#9881;&nbsp; Settings</h2>
+        <button class="modal-close-btn" id="settings-modal-close" aria-label="Close">✕</button>
       </div>
 
       <!-- ── Finnhub Price API key ────────────────────────── -->
-      <div class="sync-section-divider"></div>
       <div class="sync-section">
         <h3 class="sync-section-title">&#128200;&nbsp; Live Prices &mdash; Finnhub API Key</h3>
         <p class="sync-intro">
-          A free <strong>Finnhub</strong> key fetches all prices in seconds from any browser &mdash;
-          no proxy needed. Sign up at <strong>finnhub.io</strong>, copy your key from the dashboard,
-          and paste it below. It is stored only in <em>this browser</em>.
+          A free <strong>Finnhub</strong> key fetches live prices directly &mdash; no proxy
+          needed. Sign up at <strong>finnhub.io</strong>, copy your key, and paste it below.
+          The key is saved in <code>data/portfolio.json</code> on your local machine.
         </p>
         <label class="sync-field-label" for="finnhub-key-input">Finnhub API Key</label>
         <div class="sync-pat-row">
@@ -146,9 +94,41 @@
         <span class="sync-status-msg" id="finnhub-key-status"></span>
       </div>
 
-      <!-- ── Status bar (both views) ──────────────────────── -->
-      <div class="sync-status-bar">
-        <span class="sync-status-msg" id="sync-last-saved"></span>
+      <!-- ── JSONBin cloud storage ─────────────────────────── -->
+      <div class="sync-section-divider"></div>
+      <div class="sync-section">
+        <h3 class="sync-section-title">&#9729;&#65039;&nbsp; Cloud Save &mdash; JSONBin.io</h3>
+        <p class="sync-intro">
+          Paste your <strong>X-Master-Key</strong> from
+          <a href="https://jsonbin.io" target="_blank" rel="noopener">jsonbin.io</a>
+          to sync portfolios across browsers and devices.
+          A private storage bin is created automatically on first save.
+          <strong>On a new device</strong>, also paste your existing Bin ID below so the app
+          loads your saved data instead of starting fresh.
+        </p>
+        <label class="sync-field-label" for="jsonbin-key-input">X-Master-Key (Access Key)</label>
+        <div class="sync-pat-row">
+          <input type="password"
+                 id="jsonbin-key-input"
+                 class="sync-pat-input"
+                 placeholder="$2b$10$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                 autocomplete="off"
+                 spellcheck="false" />
+          <button class="btn btn-cloud-connect" onclick="saveJsonbinKey()">Save Key</button>
+        </div>
+        <span class="sync-status-msg" id="jsonbin-key-status"></span>
+        <div style="margin-top:8px;">
+          <label class="sync-field-label" for="jsonbin-id-input">
+            Bin ID — <em style="font-weight:400;opacity:0.75;">auto-assigned on first save; paste here when setting up a new device</em>
+          </label>
+          <input type="text"
+                 id="jsonbin-id-input"
+                 class="sync-pat-input"
+                 placeholder="leave blank to auto-create a new bin"
+                 autocomplete="off"
+                 spellcheck="false"
+                 style="width:100%;box-sizing:border-box;" />
+        </div>
       </div>
 
     </div>
@@ -161,5 +141,7 @@
   </noscript>
 
   <script src="script.js"></script>
+  <!-- Stage 8 — Tax-Aware Rebalancing Layer (self-contained plug-in, loaded after script.js) -->
+  <script src="stage8_tax_layer.js"></script>
 </body>
 </html>

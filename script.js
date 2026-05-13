@@ -64,21 +64,9 @@ const nextRowId = () => `row-${++_rowId}`;
 /* Tracks how many portfolios have ever been created (for unique IDs/names) */
 let _portfolioSeq = PORTFOLIOS.length;
 
-/**
- * SAFETY GUARD — Gist auto-push is disabled until real user data has been
- * confirmed loaded (from localStorage or Gist). This prevents demo data
- * from ever being auto-pushed when the app opens fresh on a new browser/origin.
- * Only set to true by loadState() returning true, a successful Gist pull,
- * or an explicit user action (manual Push button).
- */
-let _gistPushEnabled = false;
-
-/* ── localStorage persistence ───────────────────────────────── */
-const STORAGE_KEY = 'ira-dashboard-v1';
-
-/* ── Finnhub price API ──────────────────────────────────────── */
-const FINNHUB_KEY_STORAGE = 'ira-finnhub-key';
-const getFinnhubKey = () => localStorage.getItem(FINNHUB_KEY_STORAGE) || '';
+/* ── In-memory settings (populated from server on startup) ──── */
+let _settings = { finnhubKey: '', jsonbinKey: '', jsonbinId: '' };
+const getFinnhubKey = () => _settings.finnhubKey || '';
 
 /* ── Price proxy map — Fidelity-only funds with no public API ── */
 /*
@@ -102,211 +90,182 @@ const PRICE_PROXY_MAP = {
   FXAIX: 'SPY',
 };
 
-/* ── GitHub Gist cloud sync ──────────────────────────── */
-const GIST_PAT_KEY  = 'ira-gist-pat';
-const GIST_ID_KEY   = 'ira-gist-id';
-const GIST_FILENAME = 'ira-dashboard.json';
-const GH_API        = 'https://api.github.com';
-
-const gistSync = {
-  get pat()       { return localStorage.getItem(GIST_PAT_KEY) || ''; },
-  get gistId()    { return localStorage.getItem(GIST_ID_KEY)  || ''; },
-  get connected() { return !!this.pat; },
-
-  _headers(extra = {}) {
-    return {
-      Authorization: `Bearer ${this.pat}`,
-      Accept: 'application/vnd.github+json',
-      'Content-Type': 'application/json',
-      ...extra,
-    };
-  },
-
-  /** Validate PAT by hitting /user; store it and auto-discover existing Gist. */
-  async connect(pat) {
-    const res = await fetch(`${GH_API}/user`, {
-      headers: { Authorization: `Bearer ${pat}`, Accept: 'application/vnd.github+json' },
-    });
-    if (!res.ok) throw new Error(`GitHub auth failed (​${res.status})`);
-    localStorage.setItem(GIST_PAT_KEY, pat);
-    // Try to find an existing Gist so we can pull immediately on a new device
-    await this.findGist();
-    updateSyncStatus();
-  },
-
-  disconnect() {
-    localStorage.removeItem(GIST_PAT_KEY);
-    localStorage.removeItem(GIST_ID_KEY);
-    updateSyncStatus();
-  },
-
-  /** Search the user’s Gist list for one containing our filename. */
-  async findGist() {
-    const res = await fetch(`${GH_API}/gists?per_page=100`, { headers: this._headers() });
-    if (!res.ok) return null;
-    const list  = await res.json();
-    const found = list.find(g => g.files?.[GIST_FILENAME]);
-    if (found) {
-      localStorage.setItem(GIST_ID_KEY, found.id);
-      return found.id;
-    }
-    return null;
-  },
-
-  /** Push current state JSON to Gist (create on first push, update thereafter). */
-  async push(state) {
-    if (!this.connected) return;
-    const body = JSON.stringify({
-      description: 'IRA Portfolio Rebalancing Dashboard — auto-save',
-      public: false,
-      files: { [GIST_FILENAME]: { content: JSON.stringify(state, null, 2) } },
-    });
-    let res;
-    if (this.gistId) {
-      res = await fetch(`${GH_API}/gists/${this.gistId}`,
-        { method: 'PATCH', headers: this._headers(), body });
-    } else {
-      res = await fetch(`${GH_API}/gists`,
-        { method: 'POST', headers: this._headers(), body });
-      if (res.ok) {
-        const data = await res.json();
-        localStorage.setItem(GIST_ID_KEY, data.id);
-      }
-    }
-    if (!res.ok) throw new Error(`Gist push failed (​${res.status})`);
-    setSyncTimestamp();
-  },
-
-  /** Pull state JSON from Gist; returns parsed object or null. */
-  async pull() {
-    if (!this.connected) return null;
-    // If we have no stored ID yet, try to discover it first
-    if (!this.gistId) await this.findGist();
-    if (!this.gistId) return null;
-    const res = await fetch(`${GH_API}/gists/${this.gistId}`, { headers: this._headers() });
-    if (!res.ok) throw new Error(`Gist pull failed (​${res.status})`);
-    const data    = await res.json();
-    const content = data.files?.[GIST_FILENAME]?.content;
-    if (!content) return null;
-    return JSON.parse(content);
-  },
-};
-
-/** Update the cloud-sync button appearance in the site header. */
-function updateSyncStatus() {
-  const btn = document.getElementById('btn-cloud-sync');
-  if (!btn) return;
-  if (gistSync.connected) {
-    btn.classList.add('connected');
-    btn.title = 'Cloud Sync — Connected to GitHub Gist (click to manage)';
-  } else {
-    btn.classList.remove('connected');
-    btn.title = 'Cloud Sync — Not connected (click to set up)';
-  }
-}
-
-/** Write the “last synced” timestamp to the sync modal status line. */
-function setSyncTimestamp() {
-  const el = document.getElementById('sync-last-saved');
-  if (el) {
-    el.textContent = 'Last synced: ' + new Date().toLocaleTimeString();
-    el.className = 'sync-status-msg sync-ok';
-  }
-}
-
-/** Show a message in the sync modal status line. */
-function setSyncMsg(msg, type = 'info') {
-  const el = document.getElementById('sync-last-saved');
-  if (el) {
-    el.textContent = msg;
-    el.className   = `sync-status-msg sync-${type}`;
-  }
-}
 
 /**
- * Returns true if the given portfolios array is identical to the built-in
- * demo defaults (matched by portfolio count, holding count, and all tickers).
- * Used as a second-layer guard to prevent auto-pushing demo data to Gist.
+ * Collect DOM state and persist to the local server (debounced 500 ms).
+ * The save indicator flashes immediately for responsive UI feedback.
  */
-function _looksLikeDemo(portfolios) {
-  const defaults = getDefaultPortfolios();
-  if (!Array.isArray(portfolios) || portfolios.length !== defaults.length) return false;
-  return portfolios.every((p, pi) => {
-    const d = defaults[pi];
-    if (!p.holdings || p.holdings.length !== d.holdings.length) return false;
-    return p.holdings.every((h, hi) => h.ticker === d.holdings[hi].ticker);
-  });
-}
-
-/**
- * Read every editable field + fetched mkt prices from the live DOM
- * and persist to localStorage as JSON.
- */
+let _saveTimer = null;
 function saveState() {
+  flashSaveIndicator();
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(_persistState, 500);
+}
+
+const _LS_KEY = 'ira-dashboard-state';
+const _IS_LOCAL = ['localhost', '127.0.0.1'].includes(location.hostname);
+
+async function _persistState() {
+  const cards = Array.from(document.querySelectorAll('.portfolio-card'));
+  const state = {
+    portfolioSeq: _portfolioSeq,
+    settings    : _settings,
+    portfolios  : cards.map(card => {
+      const id       = card.id.replace('card-', '');
+      const name     = card.querySelector('.card-title')?.textContent     || '';
+      const subtitle = card.querySelector('.card-subtitle')?.textContent  || '';
+      const rows     = Array.from(card.querySelectorAll('tbody tr[data-row]'));
+      const holdings = rows.map(row => ({
+        ticker   : row.querySelector('[data-ticker]')?.value              || '',
+        shares   : toNum(row.querySelector('[data-shares]')?.value),
+        price    : toNum(row.querySelector('[data-cost-basis]')?.value),
+        targetPct: toNum(row.querySelector('[data-target-pct]')?.value),
+        mktPrice : toNum(row.querySelector('[data-mkt-price]')?.value),
+      }));
+      return { id, name, subtitle, holdings };
+    }),
+  };
+
+  /* Always persist to localStorage so GitHub Pages retains data. */
   try {
-    const cards = Array.from(document.querySelectorAll('.portfolio-card'));
-    const state = {
-      portfolioSeq: _portfolioSeq,
-      savedAt: new Date().toISOString(),
-      portfolios: cards.map(card => {
-        const id       = card.id.replace('card-', '');
-        const name     = card.querySelector('.card-title')?.textContent     || '';
-        const subtitle = card.querySelector('.card-subtitle')?.textContent  || '';
-        const rows     = Array.from(card.querySelectorAll('tbody tr[data-row]'));
-        const holdings = rows.map(row => ({
-          ticker   : row.querySelector('[data-ticker]')?.value              || '',
-          shares   : toNum(row.querySelector('[data-shares]')?.value),
-          price    : toNum(row.querySelector('[data-cost-basis]')?.value),
-          targetPct: toNum(row.querySelector('[data-target-pct]')?.value),
-          mktPrice : toNum(row.querySelector('[data-mkt-price]')?.value),
-        }));
-        return { id, name, subtitle, holdings };
-      }),
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    flashSaveIndicator();
-    // Auto-push to Gist only when real user data is confirmed loaded.
-    // _gistPushEnabled stays false on a fresh origin until a pull/load succeeds,
-    // which prevents demo data from silently overwriting the real Gist.
-    if (gistSync.connected && _gistPushEnabled && !_looksLikeDemo(state.portfolios)) {
-      gistSync.push(state).catch(e => console.warn('Gist push failed:', e));
-    }
+    localStorage.setItem(_LS_KEY, JSON.stringify(state));
   } catch (e) {
-    console.warn('saveState failed:', e);
+    console.warn('localStorage save failed:', e);
+  }
+
+  /* Sync to JSONBin when an API key is configured. */
+  if (_settings.jsonbinKey) {
+    try {
+      if (!_settings.jsonbinId) {
+        /* First save — auto-create a private bin. */
+        const res = await fetch('https://api.jsonbin.io/v3/b', {
+          method : 'POST',
+          headers: {
+            'Content-Type' : 'application/json',
+            'X-Master-Key' : _settings.jsonbinKey,
+            'X-Bin-Name'   : 'ira-portfolio-dashboard',
+            'X-Bin-Private': 'true',
+          },
+          body: JSON.stringify(state),
+        });
+        if (res.ok) {
+          const json = await res.json();
+          _settings.jsonbinId  = json.metadata.id;
+          state.settings.jsonbinId = json.metadata.id;
+          /* Persist the new binId back to localStorage. */
+          try { localStorage.setItem(_LS_KEY, JSON.stringify(state)); } catch (_) {}
+          /* Show the bin ID in the Settings modal if it is open. */
+          _updateJsonbinIdDisplay();
+        }
+      } else {
+        /* Subsequent saves — update the existing bin. */
+        await fetch(`https://api.jsonbin.io/v3/b/${_settings.jsonbinId}`, {
+          method : 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Master-Key': _settings.jsonbinKey,
+          },
+          body: JSON.stringify(state),
+        });
+      }
+    } catch (e) {
+      console.warn('JSONBin save failed:', e);
+    }
+  }
+
+  /* Also persist to the local server when running locally. */
+  if (_IS_LOCAL) {
+    try {
+      await fetch('/api/data', {
+        method : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body   : JSON.stringify(state),
+      });
+    } catch (e) {
+      console.warn('Server save failed:', e);
+    }
   }
 }
 
 /**
- * Load persisted state from localStorage into PORTFOLIOS.
+ * Load portfolio data.
+ * Tries the local server first; falls back to localStorage (GitHub Pages).
  * Returns true if valid saved data was found, false otherwise.
  */
-function loadState() {
+async function loadState() {
+  const _defaultSettings = () => ({ finnhubKey: '', jsonbinKey: '', jsonbinId: '' });
+
+  /* 1. Peek at localStorage to get credentials before attempting remote loads. */
+  let lsState = null;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return false;
-    const state = JSON.parse(raw);
-    if (!Array.isArray(state?.portfolios) || state.portfolios.length === 0) return false;
-    PORTFOLIOS = state.portfolios;
-    _portfolioSeq = state.portfolioSeq ?? state.portfolios.length;
-    _gistPushEnabled = true;  // real data confirmed — safe to auto-push
-    return true;
-  } catch (e) {
-    console.warn('loadState failed:', e);
-    return false;
+    const raw = localStorage.getItem(_LS_KEY);
+    if (raw) lsState = JSON.parse(raw);
+  } catch (_) {}
+
+  /* 2. Try local server (only when running locally). */
+  if (_IS_LOCAL) {
+    try {
+      const res = await fetch('/api/data');
+      if (res.ok) {
+        const state = await res.json();
+        if (Array.isArray(state?.portfolios)) {
+          PORTFOLIOS    = state.portfolios.length > 0 ? state.portfolios : getDefaultPortfolios();
+          _portfolioSeq = state.portfolioSeq ?? PORTFOLIOS.length;
+          _settings     = { ..._defaultSettings(), ...state.settings };
+          return true;
+        }
+      }
+    } catch (e) {
+      /* Server not available — fall through. */
+    }
   }
+
+  /* 3. Try JSONBin if credentials are stored in localStorage. */
+  const creds = lsState?.settings;
+  if (creds?.jsonbinKey && creds?.jsonbinId) {
+    try {
+      const res = await fetch(
+        `https://api.jsonbin.io/v3/b/${creds.jsonbinId}/latest`,
+        { headers: { 'X-Master-Key': creds.jsonbinKey } }
+      );
+      if (res.ok) {
+        const json  = await res.json();
+        const state = json.record;
+        if (Array.isArray(state?.portfolios)) {
+          PORTFOLIOS    = state.portfolios.length > 0 ? state.portfolios : getDefaultPortfolios();
+          _portfolioSeq = state.portfolioSeq ?? PORTFOLIOS.length;
+          _settings     = { ..._defaultSettings(), ...state.settings,
+                            jsonbinKey: creds.jsonbinKey, jsonbinId: creds.jsonbinId };
+          /* Refresh localStorage with the latest remote data. */
+          try { localStorage.setItem(_LS_KEY, JSON.stringify(state)); } catch (_) {}
+          return true;
+        }
+      }
+    } catch (e) {
+      console.warn('JSONBin load failed:', e);
+    }
+  }
+
+  /* 4. Fall back to localStorage. */
+  if (lsState && Array.isArray(lsState?.portfolios)) {
+    PORTFOLIOS    = lsState.portfolios.length > 0 ? lsState.portfolios : getDefaultPortfolios();
+    _portfolioSeq = lsState.portfolioSeq ?? PORTFOLIOS.length;
+    _settings     = { ..._defaultSettings(), ...lsState.settings };
+    return true;
+  }
+  return false;
 }
 
 /**
- * Wipe localStorage and reload the original demo portfolios.
- * Called by the "Reset to Demo" button in the site header.
+ * Reset to default demo portfolios and persist the reset to disk.
+ * Called by the "Reset Demo" button in the site header.
  */
 function resetToDemo() {
   if (!confirm('Reset all portfolios to demo data? All your changes will be lost.')) return;
-  localStorage.removeItem(STORAGE_KEY);
-  PORTFOLIOS = getDefaultPortfolios();
+  PORTFOLIOS    = getDefaultPortfolios();
   _portfolioSeq = PORTFOLIOS.length;
-  _gistPushEnabled = false;  // don't auto-push demo data
   renderDashboard();
+  _persistState().catch(e => console.warn('resetToDemo save failed:', e));
 }
 
 /** Flash a brief "Saved" indicator in the site header. */
@@ -321,41 +280,12 @@ function flashSaveIndicator() {
 /* ================================================================
    INITIALISATION
    ================================================================ */
-document.addEventListener('DOMContentLoaded', () => {
-  // 1. Try to pull from Gist first (if connected); fall back to localStorage.
-  if (gistSync.connected && gistSync.gistId) {
-    gistSync.pull()
-      .then(state => {
-        if (state?.portfolios?.length) {
-          PORTFOLIOS     = state.portfolios;
-          _portfolioSeq  = state.portfolioSeq ?? state.portfolios.length;
-          // Also refresh localStorage so offline fallback stays current
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-          _gistPushEnabled = true;  // real data loaded — safe to auto-push
-          setSyncTimestamp();
-        } else {
-          loadState();
-        }
-      })
-      .catch(e => {
-        console.warn('Gist pull on load failed, using localStorage:', e);
-        loadState();
-      })
-      .finally(() => {
-        setHeaderDate();
-        renderDashboard();
-        initModal();
-        initSyncModal();
-        updateSyncStatus();
-      });
-  } else {
-    loadState();   // sets _gistPushEnabled=true if real data found
-    setHeaderDate();
-    renderDashboard();
-    initModal();
-    initSyncModal();
-    updateSyncStatus();
-  }
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadState();
+  setHeaderDate();
+  renderDashboard();
+  initModal();
+  initSettingsModal();
 });
 
 function setHeaderDate() {
@@ -503,6 +433,11 @@ function buildPortfolioCard(portfolio, cardNumber) {
                 onclick="exportToCSV('${escAttr(portfolio.id)}')"
                 title="Download this portfolio as a CSV file">
           <span aria-hidden="true">&#8595;</span> Export CSV
+        </button>
+        <button class="btn btn-tax-layer"
+                onclick="generateTaxAwareSuggestion('${escAttr(portfolio.id)}')"
+                title="Stage 8 — Tax-Aware Rebalancing Analysis">
+          <span aria-hidden="true">&#9650;</span> Tax-Aware Analysis
         </button>
         <div class="btn-divider" role="separator"></div>
         <button class="btn btn-add-row"
@@ -1442,37 +1377,45 @@ function exportToCSV(portfolioId) {
 }
 
 /* ================================================================
-   SYNC MODAL  (GitHub Gist settings)
+   SETTINGS MODAL  (Finnhub API key)
    ================================================================ */
 
-function initSyncModal() {
-  document.getElementById('sync-modal-close')
-    ?.addEventListener('click', closeSyncModal);
-  document.getElementById('sync-modal-backdrop')
-    ?.addEventListener('click', e => { if (e.target.id === 'sync-modal-backdrop') closeSyncModal(); });
+function initSettingsModal() {
+  document.getElementById('settings-modal-close')
+    ?.addEventListener('click', closeSettingsModal);
+  document.getElementById('settings-modal-backdrop')
+    ?.addEventListener('click', e => {
+      if (e.target.id === 'settings-modal-backdrop') closeSettingsModal();
+    });
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && document.getElementById('sync-modal-backdrop')?.classList.contains('active'))
-      closeSyncModal();
+    if (e.key === 'Escape' &&
+        document.getElementById('settings-modal-backdrop')?.classList.contains('active'))
+      closeSettingsModal();
   });
 }
 
-function openSyncModal() {
-  const backdrop = document.getElementById('sync-modal-backdrop');
+function openSettingsModal() {
+  const backdrop = document.getElementById('settings-modal-backdrop');
   if (!backdrop) return;
-  // Pre-fill PAT field if already stored (masked)
-  const patInput = document.getElementById('sync-pat-input');
-  if (patInput) patInput.value = gistSync.connected ? '••••••••••••••••••••' : '';
-  // Pre-fill Finnhub key if stored (masked)
-  const fhInput = document.getElementById('finnhub-key-input');
-  if (fhInput) fhInput.value = getFinnhubKey() ? '••••••••••••••••••••••••••••••••' : '';
+  const fhInput  = document.getElementById('finnhub-key-input');
   const fhStatus = document.getElementById('finnhub-key-status');
+  if (fhInput)  fhInput.value        = getFinnhubKey() ? '••••••••••••••••••••••••••••••••' : '';
   if (fhStatus) fhStatus.textContent = getFinnhubKey() ? '✓ Key saved — Fetch Prices will use Finnhub.' : '';
-  _refreshSyncModalUI();
+  /* Populate JSONBin fields. */
+  const jbInput  = document.getElementById('jsonbin-key-input');
+  const jbStatus = document.getElementById('jsonbin-key-status');
+  if (jbInput)  jbInput.value        = _settings.jsonbinKey ? '••••••••••••••••••••••••••••••••' : '';
+  if (jbStatus) jbStatus.textContent = _settings.jsonbinKey ? '✓ Key saved — data syncs to JSONBin.' : '';
+  _updateJsonbinIdDisplay();
   backdrop.classList.add('active');
-  if (!gistSync.connected) patInput?.focus();
+  if (!getFinnhubKey()) fhInput?.focus();
 }
 
-/** Save or clear the Finnhub API key from the sync modal input. */
+function closeSettingsModal() {
+  document.getElementById('settings-modal-backdrop')?.classList.remove('active');
+}
+
+/** Save or clear the Finnhub API key; persists to server via saveState(). */
 function saveFinnhubKey() {
   const input    = document.getElementById('finnhub-key-input');
   const statusEl = document.getElementById('finnhub-key-status');
@@ -1482,147 +1425,109 @@ function saveFinnhubKey() {
     return;
   }
   if (val === 'clear' || val === 'remove') {
-    localStorage.removeItem(FINNHUB_KEY_STORAGE);
+    _settings.finnhubKey = '';
     if (input)    input.value = '';
     if (statusEl) statusEl.textContent = 'Key removed.';
+    saveState();
     return;
   }
-  localStorage.setItem(FINNHUB_KEY_STORAGE, val);
+  _settings.finnhubKey = val;
   if (input)    input.value = '••••••••••••••••••••••••••••••••';
   if (statusEl) statusEl.textContent = '✓ Key saved — Fetch Prices will now use Finnhub.';
+  saveState();
 }
 
-function closeSyncModal() {
-  document.getElementById('sync-modal-backdrop')?.classList.remove('active');
-  setSyncMsg('');
-}
-
-/** Toggle connected/disconnected views inside the modal. */
-function _refreshSyncModalUI() {
-  const connectedView    = document.getElementById('sync-view-connected');
-  const disconnectedView = document.getElementById('sync-view-disconnected');
-  const gistIdEl         = document.getElementById('sync-gist-id-display');
-  if (gistSync.connected) {
-    connectedView?.style.setProperty('display', 'flex');
-    disconnectedView?.style.setProperty('display', 'none');
-    if (gistIdEl) gistIdEl.textContent = gistSync.gistId || 'Will be created on next save';
-  } else {
-    connectedView?.style.setProperty('display', 'none');
-    disconnectedView?.style.setProperty('display', 'flex');
+/** Show or hide the Bin ID display row in the Settings modal. */
+function _updateJsonbinIdDisplay() {
+  const input = document.getElementById('jsonbin-id-input');
+  if (!input) return;
+  if (_settings.jsonbinId) {
+    input.value = _settings.jsonbinId;
   }
 }
 
-/** Called by the "Connect" button in the sync modal. */
-async function connectGist() {
-  const patInput = document.getElementById('sync-pat-input');
-  const pat      = patInput?.value?.trim();
-  if (!pat || pat.startsWith('•')) {
-    setSyncMsg('Please paste your Personal Access Token.', 'warn');
-    patInput?.focus();
+/** Save or clear the JSONBin X-Master-Key; triggers a save to create the bin if needed. */
+function saveJsonbinKey() {
+  const input    = document.getElementById('jsonbin-key-input');
+  const idInput  = document.getElementById('jsonbin-id-input');
+  const statusEl = document.getElementById('jsonbin-key-status');
+  const val      = input?.value?.trim() ?? '';
+  if (!val || val.startsWith('•')) {
+    /* No new key — but still allow updating the Bin ID alone. */
+    const newId = idInput?.value?.trim() ?? '';
+    if (newId && newId !== _settings.jsonbinId) {
+      _settings.jsonbinId = newId;
+      if (statusEl) statusEl.textContent = '↺ Bin ID updated — loading your data…';
+      _loadFromJsonbin(statusEl);
+    } else {
+      if (statusEl) statusEl.textContent = 'No change — paste a new key to update.';
+    }
     return;
   }
-  const btn = document.getElementById('btn-sync-connect');
-  btn.disabled    = true;
-  btn.textContent = 'Connecting…';
-  setSyncMsg('Validating token…', 'info');
-  try {
-    await gistSync.connect(pat);
-    patInput.value = '••••••••••••••••••••';
-    setSyncMsg(gistSync.gistId
-      ? 'Connected! Found existing Gist — pulling your data…'
-      : 'Connected! A new Gist will be created on your first save.', 'ok');
-    _refreshSyncModalUI();
-    // If an existing Gist was found, pull immediately and reload the dashboard
-    if (gistSync.gistId) {
-      const state = await gistSync.pull();
-      if (state?.portfolios?.length) {
-        PORTFOLIOS    = state.portfolios;
-        _portfolioSeq = state.portfolioSeq ?? state.portfolios.length;
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-        _gistPushEnabled = true;  // real data loaded — safe to auto-push
-        setSyncTimestamp();
-        renderDashboard();
-        setSyncMsg('Data pulled from Gist and dashboard updated.', 'ok');
-      }
-    }
-  } catch (e) {
-    setSyncMsg(`Error: ${e.message}`, 'error');
-  } finally {
-    btn.disabled    = false;
-    btn.textContent = 'Connect';
-    updateSyncStatus();
+  if (val === 'clear' || val === 'remove') {
+    _settings.jsonbinKey = '';
+    _settings.jsonbinId  = '';
+    if (input)    input.value = '';
+    if (idInput)  idInput.value = '';
+    if (statusEl) statusEl.textContent = 'JSONBin key removed — using localStorage only.';
+    saveState();
+    return;
   }
+  _settings.jsonbinKey = val;
+  if (input) input.value = '••••••••••••••••••••••••••••••••';
+
+  /* If the user also provided an existing Bin ID, use it to load their data. */
+  const providedId = idInput?.value?.trim() ?? '';
+  if (providedId) {
+    _settings.jsonbinId = providedId;
+    if (statusEl) statusEl.textContent = '↺ Key saved — loading data from your existing bin…';
+    _loadFromJsonbin(statusEl);
+    return;
+  }
+
+  if (statusEl) statusEl.textContent = '✓ Key saved — syncing to JSONBin…';
+  /* No Bin ID provided — trigger a save so a new bin is created. */
+  _persistState().then(() => {
+    if (statusEl) statusEl.textContent = _settings.jsonbinId
+      ? `✓ Connected — Bin ID: ${_settings.jsonbinId}`
+      : '✓ Key saved — bin will be created on next save.';
+  }).catch(() => {
+    if (statusEl) statusEl.textContent = '⚠ Key saved but JSONBin sync failed — check the key.';
+  });
 }
 
-/** Called by the "Pull now" button — fetch latest Gist data and reload. */
-async function pullFromGist() {
-  setSyncMsg('Pulling from Gist…', 'info');
+/**
+ * Fetch data from the configured JSONBin bin and replace the current portfolios.
+ * Called when the user provides an existing Bin ID on a new device.
+ *
+ * @param {HTMLElement|null} statusEl  Status message element to update.
+ */
+async function _loadFromJsonbin(statusEl) {
   try {
-    const state = await gistSync.pull();
-    if (!state?.portfolios?.length) { setSyncMsg('No data found in Gist.', 'warn'); return; }
-    PORTFOLIOS    = state.portfolios;
-    _portfolioSeq = state.portfolioSeq ?? state.portfolios.length;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    _gistPushEnabled = true;  // real data loaded — safe to auto-push
-    setSyncTimestamp();
-    renderDashboard();
-    setSyncMsg('Dashboard updated from Gist.', 'ok');
-  } catch (e) {
-    setSyncMsg(`Pull failed: ${e.message}`, 'error');
-  }
-}
-
-/** Called by the "Push now" button — force-save current state to Gist. */
-async function pushToGist() {
-  // Build state from DOM (same as saveState does)
-  const cards = Array.from(document.querySelectorAll('.portfolio-card'));
-  const state = {
-    portfolioSeq: _portfolioSeq,
-    savedAt: new Date().toISOString(),
-    portfolios: cards.map(card => {
-      const id       = card.id.replace('card-', '');
-      const name     = card.querySelector('.card-title')?.textContent     || '';
-      const subtitle = card.querySelector('.card-subtitle')?.textContent  || '';
-      const rows     = Array.from(card.querySelectorAll('tbody tr[data-row]'));
-      const holdings = rows.map(row => ({
-        ticker   : row.querySelector('[data-ticker]')?.value              || '',
-        shares   : toNum(row.querySelector('[data-shares]')?.value),
-        price    : toNum(row.querySelector('[data-cost-basis]')?.value),
-        targetPct: toNum(row.querySelector('[data-target-pct]')?.value),
-        mktPrice : toNum(row.querySelector('[data-mkt-price]')?.value),
-      }));
-      return { id, name, subtitle, holdings };
-    }),
-  };
-
-  // Warn the user if the data currently on screen looks like demo defaults
-  if (_looksLikeDemo(state.portfolios)) {
-    const ok = confirm(
-      'Warning: the dashboard is currently showing demo data.\n\n' +
-      'Pushing now will OVERWRITE your real Gist data with demo placeholders.\n\n' +
-      'Are you sure you want to continue?'
+    const res = await fetch(
+      `https://api.jsonbin.io/v3/b/${_settings.jsonbinId}/latest`,
+      { headers: { 'X-Master-Key': _settings.jsonbinKey } }
     );
-    if (!ok) { setSyncMsg('Push cancelled.', 'warn'); return; }
-  }
-
-  setSyncMsg('Pushing to Gist…', 'info');
-  try {
-    await gistSync.push(state);
-    _gistPushEnabled = true;
-    const gistIdEl = document.getElementById('sync-gist-id-display');
-    if (gistIdEl) gistIdEl.textContent = gistSync.gistId;
-    setSyncMsg('Pushed successfully.', 'ok');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json  = await res.json();
+    const state = json.record;
+    if (!Array.isArray(state?.portfolios)) throw new Error('Unexpected bin format.');
+    PORTFOLIOS    = state.portfolios.length > 0 ? state.portfolios : getDefaultPortfolios();
+    _portfolioSeq = state.portfolioSeq ?? PORTFOLIOS.length;
+    /* Keep current credentials; merge everything else from the bin. */
+    _settings = {
+      ..._settings,
+      finnhubKey: state.settings?.finnhubKey || _settings.finnhubKey,
+    };
+    /* Persist locally so next page-load skips this step. */
+    try { localStorage.setItem(_LS_KEY, JSON.stringify({ ...state, settings: _settings })); } catch (_) {}
+    _updateJsonbinIdDisplay();
+    renderDashboard();
+    if (statusEl) statusEl.textContent = `✓ Data loaded — Bin ID: ${_settings.jsonbinId}`;
   } catch (e) {
-    setSyncMsg(`Push failed: ${e.message}`, 'error');
+    console.warn('_loadFromJsonbin failed:', e);
+    if (statusEl) statusEl.textContent = `⚠ Could not load bin — check the Bin ID and key. (${e.message})`;
   }
-}
-
-/** Disconnect and clear stored credentials. */
-function disconnectGist() {
-  if (!confirm('Disconnect cloud sync? Your GitHub token will be removed from this browser. Your Gist data on GitHub will not be deleted.')) return;
-  gistSync.disconnect();
-  _refreshSyncModalUI();
-  setSyncMsg('Disconnected. Data stays in localStorage only.', 'info');
 }
 
 /* ================================================================
