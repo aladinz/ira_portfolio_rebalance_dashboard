@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IRA Portfolio Metrics Dashboard</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    /* ── Metrics Dashboard Specific Styles ── */
+    .metrics-container {
+      max-width: 1680px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .metrics-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 32px;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .metrics-title {
+      font-size: 2rem;
+      font-weight: 800;
+      color: var(--text-primary);
+      letter-spacing: .01em;
+    }
+
+    .metrics-nav-btn {
+      padding: 10px 18px;
+      font-size: 13px;
+      font-weight: 600;
+      background: var(--accent-blue-bg);
+      border: 1px solid var(--accent-blue-bdr);
+      color: var(--accent-blue);
+      border-radius: 6px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background .15s, transform .12s;
+    }
+
+    .metrics-nav-btn:hover {
+      background: rgba(30,143,224,.22);
+      transform: translateY(-1px);
+    }
+
+    .metrics-overview {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 18px;
+      margin-bottom: 32px;
+    }
+
+    .metric-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.25);
+      transition: transform .15s, border-color .15s;
+    }
+
+    .metric-card:hover {
+      border-color: var(--border-normal);
+      transform: translateY(-2px);
+    }
+
+    .metric-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      margin-bottom: 8px;
+    }
+
+    .metric-value {
+      font-size: 1.8rem;
+      font-weight: 800;
+      font-family: var(--font-mono);
+      color: var(--accent-blue);
+      margin-bottom: 6px;
+    }
+
+    .metric-value.gain { color: var(--color-ok); }
+    .metric-value.warn { color: var(--color-warn); }
+    .metric-value.danger { color: var(--color-danger); }
+
+    .metric-sub {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .portfolio-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+    }
+
+    .portfolio-summary-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      padding: 22px;
+      box-shadow: 0 4px 16px rgba(0,0,0,.3);
+    }
+
+    .portfolio-summary-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 18px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--border-normal);
+    }
+
+    .portfolio-summary-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .portfolio-summary-sub {
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-top: 2px;
+    }
+
+    .portfolio-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      background: var(--accent-blue-bg);
+      border: 1px solid var(--accent-blue-bdr);
+      color: var(--accent-blue);
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .portfolio-metrics-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .portfolio-metric-item {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .portfolio-metric-label {
+      font-size: 10px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+
+    .portfolio-metric-val {
+      font-size: 13px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      color: var(--text-primary);
+    }
+
+    .holdings-mini-list {
+      background: var(--bg-table-head);
+      border-radius: 6px;
+      padding: 12px;
+      margin-top: 14px;
+      max-height: 120px;
+      overflow-y: auto;
+    }
+
+    .holding-mini {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      padding: 4px 0;
+      color: var(--text-secondary);
+    }
+
+    .holding-ticker {
+      font-weight: 600;
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+    }
+
+    .dashboard-footer-link {
+      text-align: center;
+      margin-top: 32px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    .dashboard-footer-link a {
+      display: inline-block;
+      padding: 14px 28px;
+      background: linear-gradient(90deg, #1e8fe0 0%, #00c8a0 100%);
+      color: #fff;
+      text-decoration: none;
+      border-radius: 7px;
+      font-weight: 700;
+      font-size: 13px;
+      transition: transform .15s, box-shadow .15s;
+      box-shadow: 0 2px 12px rgba(30,143,224,.18);
+    }
+
+    .dashboard-footer-link a:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 18px rgba(30,143,224,.28);
+    }
+
+    .no-data {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-muted);
+    }
+
+    .no-data p {
+      font-size: 14px;
+      margin-bottom: 16px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Site Header (reuse from main app) -->
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="header-brand">
+        <span class="brand-mark">◈</span>
+        <div class="brand-text">
+          <h1 class="brand-title">IRA Portfolio Dashboard</h1>
+          <p class="brand-sub">Portfolio Metrics &amp; Overview</p>
+        </div>
+      </div>
+      <div class="header-right">
+        <span class="header-date" id="current-date"></span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="metrics-container">
+    <div class="metrics-header">
+      <div>
+        <h2 class="metrics-title">Your Portfolio Metrics</h2>
+      </div>
+      <a href="index.html" class="metrics-nav-btn">→ Go to Rebalance Dashboard</a>
+    </div>
+
+    <!-- Overview Cards -->
+    <div class="metrics-overview" id="overview-metrics">
+      <!-- Populated by JavaScript -->
+    </div>
+
+    <!-- Portfolio Summaries -->
+    <div id="portfolio-summaries-section">
+      <h3 style="font-size:1.3rem; font-weight:700; color:var(--text-primary); margin-bottom:18px; letter-spacing:.01em;">Portfolio Breakdown</h3>
+      <div class="portfolio-grid" id="portfolio-cards">
+        <!-- Populated by JavaScript -->
+      </div>
+    </div>
+
+    <div class="dashboard-footer-link">
+      <a href="index.html">Open Full Rebalance Dashboard →</a>
+    </div>
+  </main>
+
+  <script>
+    // Expected annual return assumptions (same as in script.js)
+    const EXPECTED_RETURNS = {
+      VTI: 0.07, QQQ: 0.08, VXUS: 0.06, BND: 0.03, GLD: 0.025,
+      SCHD: 0.065, VYM: 0.06, VGIT: 0.03, VTIP: 0.03, VNQ: 0.06,
+    };
+
+    // Get demo portfolios (same as in script.js)
+    function getDefaultPortfolios() {
+      return [
+        {
+          id: 'trad-ira',
+          name: 'Traditional IRA',
+          subtitle: 'Aggressive Growth — Tax-Deferred',
+          holdings: [
+            { ticker: 'VTI', shares: 150, price: 238.42, targetPct: 45, mktPrice: 0 },
+            { ticker: 'QQQ', shares: 45, price: 495.80, targetPct: 35, mktPrice: 0 },
+            { ticker: 'VXUS', shares: 100, price: 62.15, targetPct: 10, mktPrice: 0 },
+            { ticker: 'BND', shares: 50, price: 74.22, targetPct: 5, mktPrice: 0 },
+            { ticker: 'GLD', shares: 25, price: 189.50, targetPct: 5, mktPrice: 0 },
+          ],
+        },
+        {
+          id: 'roth-ira',
+          name: 'Roth IRA',
+          subtitle: 'Income & Stability — Tax-Free Growth',
+          holdings: [
+            { ticker: 'SCHD', shares: 200, price: 79.88, targetPct: 20, mktPrice: 0 },
+            { ticker: 'VYM', shares: 120, price: 124.33, targetPct: 29, mktPrice: 0 },
+            { ticker: 'VGIT', shares: 200, price: 58.90, targetPct: 19, mktPrice: 0 },
+            { ticker: 'VTIP', shares: 100, price: 106.75, targetPct: 21, mktPrice: 0 },
+            { ticker: 'VNQ', shares: 80, price: 88.50, targetPct: 11, mktPrice: 0 },
+          ],
+        },
+      ];
+    }
+
+    function formatCurrency(value) {
+      return '$' + Number(value).toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+    }
+
+    function formatPercent(value) {
+      return `${Number(value).toFixed(2)}%`;
+    }
+
+    function calculatePortfolioMetrics(portfolio) {
+      let totalValue = 0;
+      let expectedReturnAmount = 0;
+      let driftAlerts = 0;
+
+      portfolio.holdings.forEach(h => {
+        const shares = h.shares || 0;
+        const price = h.mktPrice > 0 ? h.mktPrice : h.price || 0;
+        const currentValue = shares * price;
+        totalValue += currentValue;
+
+        const ticker = (h.ticker || '').toUpperCase();
+        const expPct = EXPECTED_RETURNS[ticker] ?? 0.05;
+        expectedReturnAmount += currentValue * expPct;
+
+        // Count drift alerts
+        if (totalValue > 0) {
+          const currentPct = (currentValue / totalValue) * 100;
+          const driftPct = currentPct - h.targetPct;
+          if (Math.abs(driftPct) > 3) driftAlerts++;
+        }
+      });
+
+      const expectedReturnPct = totalValue > 0 ? (expectedReturnAmount / totalValue) : 0;
+
+      return {
+        totalValue,
+        expectedReturnAmount,
+        expectedReturnPct,
+        driftAlerts,
+        holdingCount: portfolio.holdings.length,
+      };
+    }
+
+    function renderDashboard() {
+      const portfolios = getDefaultPortfolios();
+
+      // Calculate overview metrics
+      let grandTotal = 0;
+      let grandExpectedReturn = 0;
+      let totalAlerts = 0;
+      const portMetrics = [];
+
+      portfolios.forEach(p => {
+        const m = calculatePortfolioMetrics(p);
+        portMetrics.push(m);
+        grandTotal += m.totalValue;
+        grandExpectedReturn += m.expectedReturnAmount;
+        totalAlerts += m.driftAlerts;
+      });
+
+      // Render overview cards
+      const overviewEl = document.getElementById('overview-metrics');
+      overviewEl.innerHTML = `
+        <div class="metric-card">
+          <div class="metric-label">Total AUM</div>
+          <div class="metric-value gain">${formatCurrency(grandTotal)}</div>
+          <div class="metric-sub">All portfolios combined</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Expected Annual Return</div>
+          <div class="metric-value">${formatCurrency(grandExpectedReturn)}</div>
+          <div class="metric-sub">${formatPercent((grandExpectedReturn / grandTotal) * 100)} annualized</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Total Holdings</div>
+          <div class="metric-value">${portfolios.reduce((s, p) => s + p.holdings.length, 0)}</div>
+          <div class="metric-sub">Across all portfolios</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Drift Alerts</div>
+          <div class="metric-value ${totalAlerts > 0 ? 'danger' : 'gain'}">${totalAlerts}</div>
+          <div class="metric-sub">${totalAlerts > 0 ? 'Rebalancing needed' : 'All within tolerance'}</div>
+        </div>
+      `;
+
+      // Render portfolio cards
+      const portfolioCardsEl = document.getElementById('portfolio-cards');
+      portfolioCardsEl.innerHTML = portfolios.map((p, idx) => {
+        const m = portMetrics[idx];
+        const expReturnPct = m.totalValue > 0 ? (m.expectedReturnPct * 100) : 0;
+
+        return `
+          <div class="portfolio-summary-card">
+            <div class="portfolio-summary-header">
+              <div>
+                <div class="portfolio-summary-title">${p.name}</div>
+                <div class="portfolio-summary-sub">${p.subtitle}</div>
+              </div>
+              <span class="portfolio-badge">#${idx + 1}</span>
+            </div>
+
+            <div class="portfolio-metrics-row">
+              <div class="portfolio-metric-item">
+                <div class="portfolio-metric-label">Total Value</div>
+                <div class="portfolio-metric-val">${formatCurrency(m.totalValue)}</div>
+              </div>
+              <div class="portfolio-metric-item">
+                <div class="portfolio-metric-label">Expected Return</div>
+                <div class="portfolio-metric-val">${formatCurrency(m.expectedReturnAmount)}</div>
+              </div>
+            </div>
+
+            <div class="portfolio-metrics-row">
+              <div class="portfolio-metric-item">
+                <div class="portfolio-metric-label">Return %</div>
+                <div class="portfolio-metric-val" style="color:var(--accent-blue);">${formatPercent(expReturnPct)}</div>
+              </div>
+              <div class="portfolio-metric-item">
+                <div class="portfolio-metric-label">Drift Alerts</div>
+                <div class="portfolio-metric-val" style="color:${m.driftAlerts > 0 ? 'var(--color-danger)' : 'var(--color-ok)'};">${m.driftAlerts}</div>
+              </div>
+            </div>
+
+            <div class="holdings-mini-list">
+              <div style="font-size:10px; color:var(--text-muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:.06em; font-weight:600;">Holdings (${m.holdingCount})</div>
+              ${p.holdings.map(h => {
+                const price = h.mktPrice > 0 ? h.mktPrice : h.price || 0;
+                const val = (h.shares || 0) * price;
+                return `
+                  <div class="holding-mini">
+                    <span class="holding-ticker">${h.ticker}</span>
+                    <span>${formatCurrency(val)}</span>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function setCurrentDate() {
+      const el = document.getElementById('current-date');
+      if (el) {
+        el.textContent = new Date().toLocaleDateString('en-US', {
+          weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+        });
+      }
+    }
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      setCurrentDate();
+      renderDashboard();
+    });
+  </script>
+</body>
+</html>
