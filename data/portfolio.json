@@ -1,8 +1,58 @@
 {
-  "portfolioSeq": 0,
-  "savedAt": "2026-04-19T15:23:53.967Z",
+  "portfolioSeq": 4,
+  "savedAt": "2026-05-13T18:00:00.000Z",
   "settings": {
     "finnhubKey": ""
   },
-  "portfolios": []
+  "portfolios": [
+    {
+      "id": "trad-ira",
+      "name": "Traditional IRA",
+      "subtitle": "Aggressive Growth — Tax-Deferred",
+      "holdings": [
+        { "ticker": "VGSH", "shares": 3736, "price": 58.75, "targetPct": 35, "mktPrice": 58.31 },
+        { "ticker": "VTIP", "shares": 1898, "price": 49.82, "targetPct": 15, "mktPrice": 50.43 },
+        { "ticker": "SCHD", "shares": 3030, "price": 28.87, "targetPct": 15, "mktPrice": 31.86 },
+        { "ticker": "USHV", "shares": 649, "price": 94.95, "targetPct": 10, "mktPrice": 94.86 },
+        { "ticker": "GLDM", "shares": 925, "price": 91.93, "targetPct": 15, "mktPrice": 91.21 },
+        { "ticker": "SGOV", "shares": 1092, "price": 100.64, "targetPct": 10, "mktPrice": 100.41 }
+      ]
+    },
+    {
+      "id": "roth-ira",
+      "name": "Roth IRA",
+      "subtitle": "Growth-first, engineered for survival.",
+      "holdings": [
+        { "ticker": "FZROX", "shares": 3725, "price": 23.64, "targetPct": 40, "mktPrice": 24.79 },
+        { "ticker": "VXUS", "shares": 315, "price": 75.42, "targetPct": 12, "mktPrice": 82.97 },
+        { "ticker": "SCHD", "shares": 836, "price": 26.54, "targetPct": 12, "mktPrice": 31.86 },
+        { "ticker": "XLV", "shares": 166, "price": 152.95, "targetPct": 12, "mktPrice": 145.16 },
+        { "ticker": "SMH", "shares": 53, "price": 308.55, "targetPct": 10, "mktPrice": 589.82 },
+        { "ticker": "VBT", "shares": 27, "price": 57.79, "targetPct": 3, "mktPrice": 328.31 },
+        { "ticker": "VGIT", "shares": 252, "price": 60.39, "targetPct": 7, "mktPrice": 59.16 },
+        { "ticker": "GLDM", "shares": 90, "price": 101.81, "targetPct": 4, "mktPrice": 91.21 }
+      ]
+    },
+    {
+      "id": "rollover-ira",
+      "name": "Rollover IRA",
+      "subtitle": "Balanced Growth with Controlled Volatility",
+      "holdings": [
+        { "ticker": "VTI", "shares": 298.58, "price": 307.26, "targetPct": 45, "mktPrice": 361.89 },
+        { "ticker": "VXUS", "shares": 555, "price": 79.4, "targetPct": 20, "mktPrice": 84.82 },
+        { "ticker": "XLV", "shares": 244, "price": 146.49, "targetPct": 15, "mktPrice": 145.19 },
+        { "ticker": "BNDW", "shares": 693, "price": 69.1, "targetPct": 20, "mktPrice": 68.27 }
+      ]
+    },
+    {
+      "id": "income-portfolio",
+      "name": "Income Portfolio",
+      "subtitle": "Preserve first, grow second",
+      "holdings": [
+        { "ticker": "SGOV", "shares": 68.72, "price": 100.38, "targetPct": 60, "mktPrice": 100.41 },
+        { "ticker": "JEPI", "shares": 88.14, "price": 58.01, "targetPct": 25, "mktPrice": 56.82 },
+        { "ticker": "SCHD", "shares": 109.41, "price": 30.1, "targetPct": 15, "mktPrice": 31.86 }
+      ]
+    }
+  ]
 }
