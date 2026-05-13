@@ -403,6 +403,7 @@ function buildPortfolioCard(portfolio, cardNumber) {
   section.className = 'portfolio-card';
   section.id = `card-${portfolio.id}`;
 
+
   section.innerHTML = `
     <div class="card-header">
       <div class="card-title-group">
@@ -425,6 +426,11 @@ function buildPortfolioCard(portfolio, cardNumber) {
                title="Click to edit subtitle"
                >${escHTML(portfolio.subtitle)}</div>
         </div>
+      </div>
+      <div class="card-returns" style="display:flex; flex-direction:column; align-items:flex-end; margin-left:24px; min-width:170px;">
+        <span class="returns-label" style="font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.08em;">Expected Return</span>
+        <span class="returns-value" data-expected-return-amount style="font-size:14px; font-family:var(--font-mono); font-weight:700; color:var(--color-ok);">—</span>
+        <span class="returns-pct" data-expected-return-pct style="font-size:12px; color:var(--accent-blue);">—</span>
       </div>
       <div class="card-summary">
         <div class="sum-item">
@@ -696,8 +702,25 @@ function recalculate(portfolioId) {
 
   const rows = Array.from(card.querySelectorAll('tbody tr[data-row]'));
 
-  /* ── Pass 1: collect raw values, sum total portfolio value ── */
+
+  // Expected annual return assumptions (hardcoded for demo, can be customized per ticker)
+  const EXPECTED_RETURNS = {
+    VTI: 0.07,   // 7% US stocks
+    QQQ: 0.08,   // 8% Nasdaq
+    VXUS: 0.06,  // 6% Intl
+    BND: 0.03,   // 3% Bonds
+    GLD: 0.025,  // 2.5% Gold
+    SCHD: 0.065, // 6.5% Dividends
+    VYM: 0.06,   // 6% High Div
+    VGIT: 0.03,  // 3% Bonds
+    VTIP: 0.03,  // 3% TIPS
+    VNQ: 0.06,   // 6% REIT
+  };
+
+  /* ── Pass 1: collect raw values, sum total portfolio value and expected return ── */
   let totalValue = 0;
+  let expectedReturnAmount = 0;
+  let expectedReturnPct = 0;
   const rowData = rows.map(row => {
     const shares     = toNum(row.querySelector('[data-shares]')?.value);
     const costBasis  = toNum(row.querySelector('[data-cost-basis]')?.value);
@@ -707,8 +730,15 @@ function recalculate(portfolioId) {
     const targetPct  = toNum(row.querySelector('[data-target-pct]')?.value);
     const currentValue = shares * price;
     totalValue += currentValue;
-    return { row, shares, costBasis, price, targetPct, currentValue };
+
+    // Calculate expected return for this holding
+    const ticker = (row.querySelector('[data-ticker]')?.value || '').trim().toUpperCase();
+    const expPct = EXPECTED_RETURNS[ticker] ?? 0.05; // Default 5% if unknown
+    expectedReturnAmount += currentValue * expPct;
+    return { row, shares, costBasis, price, targetPct, currentValue, expPct };
   });
+
+  expectedReturnPct = totalValue > 0 ? (expectedReturnAmount / totalValue) : 0;
 
   /* ── Pass 2: derive % values, classify drift, update cells ── */
   let totalTargetPct = 0;
@@ -775,6 +805,7 @@ function recalculate(portfolioId) {
     }
   });
 
+
   /* ── Update summary strip in card header ─────────────────── */
   const totalValueEl  = card.querySelector('[data-sum-total-value]');
   const targetTotalEl = card.querySelector('[data-sum-target-total]');
@@ -782,6 +813,8 @@ function recalculate(portfolioId) {
   const alertCntEl    = card.querySelector('[data-sum-alert-count]');
   const warningEl     = card.querySelector('[data-target-warning]');
   const lastCalcEl    = card.querySelector('[data-last-calc]');
+  const expectedReturnAmountEl = card.querySelector('[data-expected-return-amount]');
+  const expectedReturnPctEl = card.querySelector('[data-expected-return-pct]');
 
   if (totalValueEl)  totalValueEl.textContent  = fmtCurrency(totalValue);
   if (holdingCntEl)  holdingCntEl.textContent  = rows.length;
@@ -798,6 +831,10 @@ function recalculate(portfolioId) {
     targetTotalEl.textContent = fmtPct(totalTargetPct);
     targetTotalEl.className   = `sum-value ${targetDiff < 0.01 ? 'v-ok' : 'v-danger'}`;
   }
+
+  // Update expected return display
+  if (expectedReturnAmountEl) expectedReturnAmountEl.textContent = fmtCurrency(expectedReturnAmount);
+  if (expectedReturnPctEl) expectedReturnPctEl.textContent = expectedReturnPct > 0 ? fmtPct(expectedReturnPct * 100) + ' / yr' : '—';
 
   if (warningEl) {
     if (targetDiff >= 0.01 && rows.length > 0) {
