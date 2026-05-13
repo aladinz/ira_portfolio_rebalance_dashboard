@@ -274,9 +274,11 @@
     const EXPECTED_RETURNS = {
       VTI: 0.07, QQQ: 0.08, VXUS: 0.06, BND: 0.03, GLD: 0.025,
       SCHD: 0.065, VYM: 0.06, VGIT: 0.03, VTIP: 0.03, VNQ: 0.06,
+      SGOV: 0.02, JEPI: 0.065, FZROX: 0.07, XLV: 0.06, SMH: 0.10,
+      VBT: 0.08, GLDM: 0.025, USHV: 0.065, BNDW: 0.03,
     };
 
-    // Get demo portfolios (same as in script.js)
+    // Get demo portfolios (fallback if API is unavailable)
     function getDefaultPortfolios() {
       return [
         {
@@ -351,9 +353,7 @@
       };
     }
 
-    function renderDashboard() {
-      const portfolios = getDefaultPortfolios();
-
+    function renderDashboard(portfolios) {
       // Calculate overview metrics
       let grandTotal = 0;
       let grandExpectedReturn = 0;
@@ -458,10 +458,25 @@
       }
     }
 
+    // Load portfolio data from API or use demo data
+    async function loadPortfolioData() {
+      try {
+        const response = await fetch('/api/data');
+        if (response.ok) {
+          const data = await response.json();
+          return data.portfolios || getDefaultPortfolios();
+        }
+      } catch (e) {
+        console.warn('API not available, using demo data:', e);
+      }
+      return getDefaultPortfolios();
+    }
+
     // Initialize on page load
-    document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('DOMContentLoaded', async () => {
       setCurrentDate();
-      renderDashboard();
+      const portfolios = await loadPortfolioData();
+      renderDashboard(portfolios);
     });
   </script>
 </body>

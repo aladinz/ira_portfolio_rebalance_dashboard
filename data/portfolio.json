@@ -1,5 +1,5 @@
 {
-  "portfolioSeq": 4,
+  "portfolioSeq": 5,
   "savedAt": "2026-05-13T18:00:00.000Z",
   "settings": {
     "finnhubKey": ""
@@ -52,6 +52,17 @@
         { "ticker": "SGOV", "shares": 68.72, "price": 100.38, "targetPct": 60, "mktPrice": 100.41 },
         { "ticker": "JEPI", "shares": 88.14, "price": 58.01, "targetPct": 25, "mktPrice": 56.82 },
         { "ticker": "SCHD", "shares": 109.41, "price": 30.1, "targetPct": 15, "mktPrice": 31.86 }
+      ]
+    },
+    {
+      "id": "investment-portfolio",
+      "name": "Investment Portfolio",
+      "subtitle": "Simple, tax-efficient, resilient growth",
+      "holdings": [
+        { "ticker": "SGOV", "shares": 696, "price": 100.52, "targetPct": 50, "mktPrice": 100.41 },
+        { "ticker": "SCHD", "shares": 517, "price": 27.05, "targetPct": 10, "mktPrice": 31.86 },
+        { "ticker": "VTI", "shares": 128, "price": 328.28, "targetPct": 30, "mktPrice": 355.29 },
+        { "ticker": "VXUS", "shares": 188, "price": 74.39, "targetPct": 10, "mktPrice": 82.97 }
       ]
     }
   ]
