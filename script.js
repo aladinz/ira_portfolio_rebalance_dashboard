@@ -194,6 +194,17 @@ async function _persistState() {
  */
 async function loadState() {
   const _defaultSettings = () => ({ finnhubKey: '', jsonbinKey: '', jsonbinId: '' });
+  const _normalizeState = (state) => {
+    if (!state || !Array.isArray(state.portfolios) || state.portfolios.length === 0) return null;
+    return state;
+  };
+  const _pickBestState = (...states) => {
+    const validStates = states.filter(s => _normalizeState(s));
+    if (validStates.length === 0) return null;
+    return validStates.reduce((best, current) => (
+      current.portfolios.length > best.portfolios.length ? current : best
+    ));
+  };
 
   /* 1. Peek at localStorage to get credentials before attempting remote loads. */
   let lsState = null;
@@ -202,18 +213,16 @@ async function loadState() {
     if (raw) lsState = JSON.parse(raw);
   } catch (_) {}
 
+  let apiState = null;
+  let jsonbinState = null;
+  let fileState = null;
+
   /* 2. Try local server (only when running locally). */
   if (_IS_LOCAL) {
     try {
       const res = await fetch('/api/data');
       if (res.ok) {
-        const state = await res.json();
-        if (Array.isArray(state?.portfolios)) {
-          PORTFOLIOS    = state.portfolios.length > 0 ? state.portfolios : getDefaultPortfolios();
-          _portfolioSeq = state.portfolioSeq ?? PORTFOLIOS.length;
-          _settings     = { ..._defaultSettings(), ...state.settings };
-          return true;
-        }
+        apiState = await res.json();
       }
     } catch (e) {
       /* Server not available — fall through. */
@@ -230,29 +239,44 @@ async function loadState() {
       );
       if (res.ok) {
         const json  = await res.json();
-        const state = json.record;
-        if (Array.isArray(state?.portfolios)) {
-          PORTFOLIOS    = state.portfolios.length > 0 ? state.portfolios : getDefaultPortfolios();
-          _portfolioSeq = state.portfolioSeq ?? PORTFOLIOS.length;
-          _settings     = { ..._defaultSettings(), ...state.settings,
-                            jsonbinKey: creds.jsonbinKey, jsonbinId: creds.jsonbinId };
-          /* Refresh localStorage with the latest remote data. */
-          try { localStorage.setItem(_LS_KEY, JSON.stringify(state)); } catch (_) {}
-          return true;
-        }
+        jsonbinState = json.record;
       }
     } catch (e) {
       console.warn('JSONBin load failed:', e);
     }
   }
 
-  /* 4. Fall back to localStorage. */
-  if (lsState && Array.isArray(lsState?.portfolios)) {
-    PORTFOLIOS    = lsState.portfolios.length > 0 ? lsState.portfolios : getDefaultPortfolios();
-    _portfolioSeq = lsState.portfolioSeq ?? PORTFOLIOS.length;
-    _settings     = { ..._defaultSettings(), ...lsState.settings };
+  /* 4. Try static data file as an additional fallback source. */
+  try {
+    const res = await fetch('data/portfolio.json');
+    if (res.ok) {
+      fileState = await res.json();
+    }
+  } catch (_) {}
+
+  /* 5. Pick the richest valid dataset so stale 2-portfolio state does not win. */
+  const selectedState = _pickBestState(apiState, jsonbinState, fileState, lsState);
+  if (selectedState) {
+    PORTFOLIOS    = selectedState.portfolios;
+    _portfolioSeq = selectedState.portfolioSeq ?? PORTFOLIOS.length;
+    _settings     = {
+      ..._defaultSettings(),
+      ...selectedState.settings,
+      ...(creds?.jsonbinKey ? { jsonbinKey: creds.jsonbinKey } : {}),
+      ...(creds?.jsonbinId ? { jsonbinId: creds.jsonbinId } : {}),
+    };
+
+    try {
+      localStorage.setItem(_LS_KEY, JSON.stringify({
+        portfolioSeq: _portfolioSeq,
+        settings: _settings,
+        portfolios: PORTFOLIOS,
+      }));
+    } catch (_) {}
+
     return true;
   }
+
   return false;
 }
 
@@ -650,6 +674,16 @@ function recalculate(portfolioId) {
     VGIT: 0.03,  // 3% Bonds
     VTIP: 0.03,  // 3% TIPS
     VNQ: 0.06,   // 6% REIT
+    SGOV: 0.05,  // 5% baseline assumption
+    VGSH: 0.05,  // 5% baseline assumption
+    JEPI: 0.065, // 6.5% income equity
+    FZROX: 0.07, // 7% total market index
+    XLV: 0.06,   // 6% healthcare
+    SMH: 0.10,   // 10% semiconductors
+    VBT: 0.08,   // 8% high-growth sleeve
+    GLDM: 0.05,  // 5% baseline assumption
+    USHV: 0.065, // 6.5% value/dividend sleeve
+    BNDW: 0.03,  // 3% global bonds
   };
 
   /* ── Pass 1: collect raw values, sum total portfolio value and expected return ── */

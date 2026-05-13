@@ -447,16 +447,33 @@
   </main>
 
   <script>
-    // Expected annual return assumptions
+    // Expected annual return assumptions (synced with index dashboard logic)
     const EXPECTED_RETURNS = {
-      VTI: 0.07, QQQ: 0.08, VXUS: 0.06, BND: 0.03, GLD: 0.025,
-      SCHD: 0.065, VYM: 0.06, VGIT: 0.03, VTIP: 0.03, VNQ: 0.06,
-      SGOV: 0.02, JEPI: 0.065, FZROX: 0.07, XLV: 0.06, SMH: 0.10,
-      VBT: 0.08, GLDM: 0.025, USHV: 0.065, BNDW: 0.03,
+      VTI: 0.07,   // 7% US stocks
+      QQQ: 0.08,   // 8% Nasdaq
+      VXUS: 0.06,  // 6% Intl
+      BND: 0.03,   // 3% Bonds
+      GLD: 0.025,  // 2.5% Gold
+      SCHD: 0.065, // 6.5% Dividends
+      VYM: 0.06,   // 6% High Div
+      VGIT: 0.03,  // 3% Bonds
+      VTIP: 0.03,  // 3% TIPS
+      VNQ: 0.06,   // 6% REIT
+      SGOV: 0.05,  // 5% baseline assumption
+      VGSH: 0.05,  // 5% baseline assumption
+      JEPI: 0.065, // 6.5% income equity
+      FZROX: 0.07, // 7% total market index
+      XLV: 0.06,   // 6% healthcare
+      SMH: 0.10,   // 10% semiconductors
+      VBT: 0.08,   // 8% high-growth sleeve
+      GLDM: 0.05,  // 5% baseline assumption
+      USHV: 0.065, // 6.5% value/dividend sleeve
+      BNDW: 0.03,  // 3% global bonds
     };
 
     let allocationChartInstance = null;
     let returnsChartInstance = null;
+    const LS_STATE_KEY = 'ira-dashboard-state';
 
     function getDefaultPortfolios() {
       return [
@@ -724,16 +741,58 @@
       }
     }
 
+    function normalizePortfolioPayload(payload) {
+      if (!payload || !Array.isArray(payload.portfolios)) return null;
+      return payload.portfolios.length > 0 ? payload.portfolios : null;
+    }
+
+    function pickLargestPortfolioSet(...sets) {
+      const validSets = sets.filter(s => Array.isArray(s) && s.length > 0);
+      if (validSets.length === 0) return null;
+      return validSets.reduce((largest, current) => (current.length > largest.length ? current : largest));
+    }
+
+    function loadPortfoliosFromLocalStorage() {
+      try {
+        const raw = localStorage.getItem(LS_STATE_KEY);
+        if (!raw) return null;
+        const state = JSON.parse(raw);
+        return normalizePortfolioPayload(state);
+      } catch (e) {
+        console.warn('Unable to read local portfolio state:', e);
+        return null;
+      }
+    }
+
     async function loadPortfolioData() {
+      // 1) Preferred source when running with local server.
+      let apiPortfolios = null;
       try {
         const response = await fetch('/api/data');
         if (response.ok) {
           const data = await response.json();
-          return data.portfolios || getDefaultPortfolios();
+          apiPortfolios = normalizePortfolioPayload(data);
         }
-      } catch (e) {
-        console.warn('API not available, using demo data:', e);
-      }
+      } catch (_) {}
+
+      // 2) Persisted browser state from the main rebalancing dashboard.
+      const localPortfolios = loadPortfoliosFromLocalStorage();
+
+      // 3) Static dataset fallback when served as a static site.
+      let filePortfolios = null;
+      try {
+        const response = await fetch('data/portfolio.json');
+        if (response.ok) {
+          const data = await response.json();
+          filePortfolios = normalizePortfolioPayload(data);
+        }
+      } catch (_) {}
+
+      const bestPortfolios = pickLargestPortfolioSet(apiPortfolios, filePortfolios, localPortfolios);
+      if (bestPortfolios) return bestPortfolios;
+
+      // 4) Last-resort demo data.
+      console.warn('Using demo portfolios fallback (2 portfolios).');
       return getDefaultPortfolios();
     }
 
