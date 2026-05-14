@@ -17,9 +17,24 @@ A client-side portfolio rebalancing tool for multiple IRA accounts. Tracks holdi
 | **Fidelity fund proxies** | FZROX, FZILX, FXAIX etc. are automatically mapped to equivalent ETFs for price lookup |
 | **Rebalance Suggestion** | Generates a formatted text report per portfolio, copyable to clipboard |
 | **Tax-Aware Analysis** | Stage 8 tax layer scores each trade by tax impact (gain/loss, holding period) |
+| **Metrics dashboard** | Dedicated analytics page with allocation visuals, concentration diagnostics, and simulation toolkit |
 | **Export CSV** | Downloads all holdings for a portfolio as a spreadsheet |
 | **Cloud sync** | JSONBin.io integration — persists data across browsers and devices |
 | **localStorage fallback** | All data is cached locally so the page survives a refresh without the cloud key |
+
+---
+
+## Interface Enhancements
+
+Recent UI updates introduced a cohesive visual language across both `index.html` and `dashboard.html`:
+
+- Refined typography with clearer hierarchy for dense financial data
+- Atmospheric gradient backdrop and elevated card surfaces for readability
+- Consistent control styling (buttons, links, pills, badges) across pages
+- Polished table states, focus rings, and hover feedback for fast scanning
+- Subtle entrance motion with `prefers-reduced-motion` accessibility fallback
+
+Use the **Metrics** button in the main header to open the advanced analytics page.
 
 ---
 
@@ -126,15 +141,17 @@ npm run dev
 ## Project Structure
 
 ```
-index.html              — Dashboard UI and modals
-styles.css              — All styling (dark theme, responsive)
-script.js               — Core application logic
-stage8_tax_layer.js     — Tax-aware rebalancing analysis (plug-in)
+index.html              — Main rebalancing dashboard UI and modals
+dashboard.html          — Analytics and metrics dashboard (charts + toolkit)
+styles.css              — Shared styling system
+script.js               — Main dashboard logic and persistence
+toolkit.js              — Shared investor toolkit components
+stage8_tax_layer.js     — Tax-aware rebalancing analysis layer
 server.js               — Local Node.js/Express server
 package.json            — npm config
 data/
   dataStore.js          — File-based persistence (local server only)
-  portfolio.json        — Saved portfolio data (local server only, git-ignored)
+  portfolio.json        — Saved portfolio data (local server only)
 ```
 
 ---
