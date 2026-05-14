@@ -526,9 +526,9 @@
         const currentValue = shares * price;
         totalValue += currentValue;
 
-        const ticker = (h.ticker || '').toUpperCase();
-        const expPct = EXPECTED_RETURNS[ticker] ?? 0.05;
-        expectedReturnAmount += currentValue * expPct;
+        const yieldValue = h.yield || 0;
+        const expectedReturnPct = yieldValue > 0 ? (yieldValue / 100) : 0;
+        expectedReturnAmount += currentValue * expectedReturnPct;
 
         if (totalValue > 0) {
           const currentPct = (currentValue / totalValue) * 100;
@@ -651,6 +651,13 @@
         totalAlerts += m.driftAlerts;
       });
 
+      const primaryIndex = portMetrics.reduce(
+        (bestIdx, current, idx, arr) => (current.totalValue > arr[bestIdx].totalValue ? idx : bestIdx),
+        0
+      );
+      const primaryPortfolio = portfolios[primaryIndex];
+      const primaryMetrics = portMetrics[primaryIndex];
+
       // Overview cards
       const overviewEl = document.getElementById('overview-metrics');
       overviewEl.innerHTML = `
@@ -661,8 +668,8 @@
         </div>
         <div class="metric-card">
           <div class="metric-label">Projected Annual Return</div>
-          <div class="metric-value">${formatCurrency(grandExpectedReturn)}</div>
-          <div class="metric-sub">${grandTotal > 0 ? formatPercent((grandExpectedReturn / grandTotal) * 100) : '—'} annualized</div>
+          <div class="metric-value">${formatCurrency(primaryMetrics.expectedReturnAmount)}</div>
+          <div class="metric-sub">${formatPercent(primaryMetrics.expectedReturnPct * 100)} annualized · ${primaryPortfolio.name}</div>
         </div>
         <div class="metric-card">
           <div class="metric-label">Total Holdings</div>

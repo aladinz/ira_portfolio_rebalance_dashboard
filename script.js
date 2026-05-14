@@ -662,30 +662,6 @@ function recalculate(portfolioId) {
   const rows = Array.from(card.querySelectorAll('tbody tr[data-row]'));
 
 
-  // Expected annual return assumptions (hardcoded for demo, can be customized per ticker)
-  const EXPECTED_RETURNS = {
-    VTI: 0.07,   // 7% US stocks
-    QQQ: 0.08,   // 8% Nasdaq
-    VXUS: 0.06,  // 6% Intl
-    BND: 0.03,   // 3% Bonds
-    GLD: 0.025,  // 2.5% Gold
-    SCHD: 0.065, // 6.5% Dividends
-    VYM: 0.06,   // 6% High Div
-    VGIT: 0.03,  // 3% Bonds
-    VTIP: 0.03,  // 3% TIPS
-    VNQ: 0.06,   // 6% REIT
-    SGOV: 0.05,  // 5% baseline assumption
-    VGSH: 0.05,  // 5% baseline assumption
-    JEPI: 0.065, // 6.5% income equity
-    FZROX: 0.07, // 7% total market index
-    XLV: 0.06,   // 6% healthcare
-    SMH: 0.10,   // 10% semiconductors
-    VBT: 0.08,   // 8% high-growth sleeve
-    GLDM: 0.05,  // 5% baseline assumption
-    USHV: 0.065, // 6.5% value/dividend sleeve
-    BNDW: 0.03,  // 3% global bonds
-  };
-
   /* ── Pass 1: collect raw values, sum total portfolio value and expected return ── */
   let totalValue = 0;
   let expectedReturnAmount = 0;
@@ -700,9 +676,9 @@ function recalculate(portfolioId) {
     const currentValue = shares * price;
     totalValue += currentValue;
 
-    // Calculate expected return for this holding
-    const ticker = (row.querySelector('[data-ticker]')?.value || '').trim().toUpperCase();
-    const expPct = EXPECTED_RETURNS[ticker] ?? 0.05; // Default 5% if unknown
+    // Calculate expected return using yield: Position Value × (Yield / 100)
+    const yieldValue = toNum(row.querySelector('[data-yield]')?.value);
+    const expPct = yieldValue > 0 ? (yieldValue / 100) : 0;
     expectedReturnAmount += currentValue * expPct;
     return { row, shares, costBasis, price, targetPct, currentValue, expPct };
   });

@@ -10,12 +10,12 @@
       "name": "Traditional IRA",
       "subtitle": "Aggressive Growth — Tax-Deferred",
       "holdings": [
-        { "ticker": "VGSH", "shares": 3736, "price": 58.75, "targetPct": 35, "mktPrice": 58.31 },
-        { "ticker": "VTIP", "shares": 1898, "price": 49.82, "targetPct": 15, "mktPrice": 50.43 },
-        { "ticker": "SCHD", "shares": 3030, "price": 28.87, "targetPct": 15, "mktPrice": 31.86 },
-        { "ticker": "USHV", "shares": 649, "price": 94.95, "targetPct": 10, "mktPrice": 94.86 },
-        { "ticker": "GLDM", "shares": 925, "price": 91.93, "targetPct": 15, "mktPrice": 91.21 },
-        { "ticker": "SGOV", "shares": 1092, "price": 100.64, "targetPct": 10, "mktPrice": 100.41 }
+        { "ticker": "VGSH", "shares": 3736, "price": 58.75, "targetPct": 35, "mktPrice": 58.31, "yield": 3.9000, "dividend": 0.1789 },
+        { "ticker": "VTIP", "shares": 1898, "price": 49.82, "targetPct": 15, "mktPrice": 50.43, "yield": 3.5800, "dividend": 0.0227 },
+        { "ticker": "SCHD", "shares": 3030, "price": 28.87, "targetPct": 15, "mktPrice": 31.86, "yield": 3.3200, "dividend": 0.2569 },
+        { "ticker": "USHV", "shares": 649, "price": 94.95, "targetPct": 10, "mktPrice": 94.86, "yield": 4.0000, "dividend": 0.3500 },
+        { "ticker": "GLDM", "shares": 925, "price": 91.93, "targetPct": 15, "mktPrice": 91.21, "yield": 0.0000, "dividend": 0.0000 },
+        { "ticker": "SGOV", "shares": 1092, "price": 100.64, "targetPct": 10, "mktPrice": 100.41, "yield": 3.9100, "dividend": 0.2979 }
       ]
     },
     {
@@ -23,14 +23,14 @@
       "name": "Roth IRA",
       "subtitle": "Growth-first, engineered for survival.",
       "holdings": [
-        { "ticker": "FZROX", "shares": 3725, "price": 23.64, "targetPct": 40, "mktPrice": 24.79 },
-        { "ticker": "VXUS", "shares": 315, "price": 75.42, "targetPct": 12, "mktPrice": 82.97 },
-        { "ticker": "SCHD", "shares": 836, "price": 26.54, "targetPct": 12, "mktPrice": 31.86 },
-        { "ticker": "XLV", "shares": 166, "price": 152.95, "targetPct": 12, "mktPrice": 145.16 },
-        { "ticker": "SMH", "shares": 53, "price": 308.55, "targetPct": 10, "mktPrice": 589.82 },
-        { "ticker": "VBT", "shares": 27, "price": 57.79, "targetPct": 3, "mktPrice": 328.31 },
-        { "ticker": "VGIT", "shares": 252, "price": 60.39, "targetPct": 7, "mktPrice": 59.16 },
-        { "ticker": "GLDM", "shares": 90, "price": 101.81, "targetPct": 4, "mktPrice": 91.21 }
+        { "ticker": "FZROX", "shares": 3725, "price": 23.64, "targetPct": 40, "mktPrice": 24.79, "yield": 0.0200, "dividend": 0.0000 },
+        { "ticker": "VXUS", "shares": 315, "price": 75.42, "targetPct": 12, "mktPrice": 82.97, "yield": 1.5000, "dividend": 0.0000 },
+        { "ticker": "SCHD", "shares": 836, "price": 26.54, "targetPct": 12, "mktPrice": 31.86, "yield": 3.3200, "dividend": 0.2569 },
+        { "ticker": "XLV", "shares": 166, "price": 152.95, "targetPct": 12, "mktPrice": 145.16, "yield": 1.2000, "dividend": 0.0000 },
+        { "ticker": "SMH", "shares": 53, "price": 308.55, "targetPct": 10, "mktPrice": 589.82, "yield": 0.5000, "dividend": 0.0000 },
+        { "ticker": "VBT", "shares": 27, "price": 57.79, "targetPct": 3, "mktPrice": 328.31, "yield": 0.0000, "dividend": 0.0000 },
+        { "ticker": "VGIT", "shares": 252, "price": 60.39, "targetPct": 7, "mktPrice": 59.16, "yield": 3.0000, "dividend": 0.0000 },
+        { "ticker": "GLDM", "shares": 90, "price": 101.81, "targetPct": 4, "mktPrice": 91.21, "yield": 0.0000, "dividend": 0.0000 }
       ]
     },
     {
@@ -38,10 +38,10 @@
       "name": "Rollover IRA",
       "subtitle": "Balanced Growth with Controlled Volatility",
       "holdings": [
-        { "ticker": "VTI", "shares": 298.58, "price": 307.26, "targetPct": 45, "mktPrice": 361.89 },
-        { "ticker": "VXUS", "shares": 555, "price": 79.4, "targetPct": 20, "mktPrice": 84.82 },
-        { "ticker": "XLV", "shares": 244, "price": 146.49, "targetPct": 15, "mktPrice": 145.19 },
-        { "ticker": "BNDW", "shares": 693, "price": 69.1, "targetPct": 20, "mktPrice": 68.27 }
+        { "ticker": "VTI", "shares": 298.58, "price": 307.26, "targetPct": 45, "mktPrice": 361.89, "yield": 1.3000, "dividend": 0.0000 },
+        { "ticker": "VXUS", "shares": 555, "price": 79.4, "targetPct": 20, "mktPrice": 84.82, "yield": 1.5000, "dividend": 0.0000 },
+        { "ticker": "XLV", "shares": 244, "price": 146.49, "targetPct": 15, "mktPrice": 145.19, "yield": 1.2000, "dividend": 0.0000 },
+        { "ticker": "BNDW", "shares": 693, "price": 69.1, "targetPct": 20, "mktPrice": 68.27, "yield": 4.2100, "dividend": 0.1939 }
       ]
     },
     {
@@ -49,9 +49,9 @@
       "name": "Income Portfolio",
       "subtitle": "Preserve first, grow second",
       "holdings": [
-        { "ticker": "SGOV", "shares": 68.72, "price": 100.38, "targetPct": 60, "mktPrice": 100.41 },
-        { "ticker": "JEPI", "shares": 88.14, "price": 58.01, "targetPct": 25, "mktPrice": 56.82 },
-        { "ticker": "SCHD", "shares": 109.41, "price": 30.1, "targetPct": 15, "mktPrice": 31.86 }
+        { "ticker": "SGOV", "shares": 68.72, "price": 100.38, "targetPct": 60, "mktPrice": 100.41, "yield": 3.9100, "dividend": 0.2979 },
+        { "ticker": "JEPI", "shares": 88.14, "price": 58.01, "targetPct": 25, "mktPrice": 56.82, "yield": 8.4400, "dividend": 0.4476 },
+        { "ticker": "SCHD", "shares": 109.41, "price": 30.1, "targetPct": 15, "mktPrice": 31.86, "yield": 3.3200, "dividend": 0.2569 }
       ]
     },
     {
@@ -59,10 +59,10 @@
       "name": "Investment Portfolio",
       "subtitle": "Simple, tax-efficient, resilient growth",
       "holdings": [
-        { "ticker": "SGOV", "shares": 696, "price": 100.52, "targetPct": 50, "mktPrice": 100.41 },
-        { "ticker": "SCHD", "shares": 517, "price": 27.05, "targetPct": 10, "mktPrice": 31.86 },
-        { "ticker": "VTI", "shares": 128, "price": 328.28, "targetPct": 30, "mktPrice": 355.29 },
-        { "ticker": "VXUS", "shares": 188, "price": 74.39, "targetPct": 10, "mktPrice": 82.97 }
+        { "ticker": "SGOV", "shares": 696, "price": 100.52, "targetPct": 50, "mktPrice": 100.41, "yield": 3.9100, "dividend": 0.2979 },
+        { "ticker": "SCHD", "shares": 517, "price": 27.05, "targetPct": 10, "mktPrice": 31.86, "yield": 3.3200, "dividend": 0.2569 },
+        { "ticker": "VTI", "shares": 128, "price": 328.28, "targetPct": 30, "mktPrice": 355.29, "yield": 1.3000, "dividend": 0.0000 },
+        { "ticker": "VXUS", "shares": 188, "price": 74.39, "targetPct": 10, "mktPrice": 82.97, "yield": 1.5000, "dividend": 0.0000 }
       ]
     }
   ]
